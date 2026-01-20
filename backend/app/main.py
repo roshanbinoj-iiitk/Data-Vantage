@@ -13,7 +13,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(scan_router, prefix="/api")
+app.include_router(scan_router, prefix="/api/scan")
 
 @app.get("/")
 def read_root():
