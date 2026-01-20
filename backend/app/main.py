@@ -7,7 +7,7 @@ app = FastAPI(title="Data Vantage API")
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Adjust for your frontend
+    allow_origins=["http://localhost:5173"],  # Adjust for your frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
