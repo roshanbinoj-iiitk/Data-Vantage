@@ -81,19 +81,19 @@ export function Dashboard() {
     >
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-zinc-500 dark:text-zinc-400 mt-1">
+        <p className="text-muted-foreground mt-1 text-lg">
           Monitor your storage and manage file scans
         </p>
       </div>
 
       {/* Start Scan Section */}
-      <Card className="border-blue-200 dark:border-blue-900 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950 dark:to-zinc-950">
+      <Card className="shadow-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Play className="h-5 w-5 text-blue-600" />
             Start New Scan
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="font-medium">
             Enter a directory path to scan for files and duplicates
           </CardDescription>
         </CardHeader>
@@ -106,7 +106,11 @@ export function Dashboard() {
               onKeyDown={(e) => e.key === 'Enter' && handleStartScan()}
               className="flex-1"
             />
-            <Button onClick={handleStartScan} disabled={!scanPath.trim()}>
+            <Button 
+              onClick={handleStartScan} 
+              disabled={!scanPath.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all active:scale-95"
+            >
               <Play className="h-4 w-4 mr-2" />
               Start Scan
             </Button>
@@ -125,40 +129,40 @@ export function Dashboard() {
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="hover:shadow-lg transition-shadow">
+        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-blue-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Files</CardTitle>
-            <Files className="h-4 w-4 text-blue-600" />
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Total Files</CardTitle>
+            <Files className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalFiles.toLocaleString()}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">{totalFiles.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
               Indexed files
             </p>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
+        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Size</CardTitle>
-            <HardDrive className="h-4 w-4 text-purple-600" />
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Total Size</CardTitle>
+            <HardDrive className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatFileSize(totalSize)}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">{formatFileSize(totalSize)}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
               Storage used
             </p>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
+        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-green-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Recent Scans</CardTitle>
-            <Clock className="h-4 w-4 text-green-600" />
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Recent Scans</CardTitle>
+            <Clock className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{scanHistory.length}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div className="text-3xl font-bold text-green-600 dark:text-green-400">{scanHistory.length}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
               Scan operations
             </p>
           </CardContent>
@@ -194,15 +198,15 @@ export function Dashboard() {
               {scanHistory.slice(0, 5).map((scan) => (
                 <div
                   key={scan.id}
-                  className="flex items-center justify-between p-3 rounded-md bg-zinc-50 dark:bg-zinc-900"
+                  className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-transparent hover:border-border transition-colors group"
                 >
                   <div className="flex-1">
                     <div className="text-sm font-medium">Scan #{scan.id}</div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <div className="text-xs text-muted-foreground">
                       {scan.percentage.toFixed(1)}% complete
                     </div>
                   </div>
-                  <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="text-sm text-muted-foreground">
                     {scan.status}
                   </div>
                 </div>

@@ -10,7 +10,7 @@ from ..core.hasher import calculate_sha256, calculate_phash, get_file_category
 
 class ScanService:
     def __init__(self):
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.executor = ThreadPoolExecutor(max_workers=16)
         self.active_tasks = {}  # task_id -> Future
 
     def start_scan(self, root_path: str, db: Session) -> str:

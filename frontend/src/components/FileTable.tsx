@@ -79,7 +79,7 @@ export function FileTable({ files }: FileTableProps) {
   })
 
   return (
-    <div className="rounded-md border border-zinc-200 dark:border-zinc-800">
+    <div className="rounded-md border border-border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -133,7 +133,7 @@ export function FileTable({ files }: FileTableProps) {
         <TableBody>
           {sortedFiles.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-zinc-500 dark:text-zinc-400 py-8">
+              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                 No files found. Start a scan to populate this table.
               </TableCell>
             </TableRow>
@@ -145,7 +145,7 @@ export function FileTable({ files }: FileTableProps) {
                   <div className="truncate max-w-md" title={file.path}>
                     {file.path.split('/').pop()}
                   </div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-md">
+                  <div className="text-xs text-muted-foreground truncate max-w-md">
                     {file.path}
                   </div>
                 </TableCell>
@@ -155,7 +155,7 @@ export function FileTable({ files }: FileTableProps) {
                     {file.category}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-zinc-500 dark:text-zinc-400">
+                <TableCell className="text-muted-foreground">
                   {file.modified ? formatDate(file.modified) : 'N/A'}
                 </TableCell>
               </TableRow>

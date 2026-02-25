@@ -30,10 +30,10 @@ export function PieChart({ data }: PieChartProps) {
         </Pie>
         <Tooltip 
           contentStyle={{
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            border: 'none',
+            backgroundColor: 'hsl(var(--card))',
+            border: '1px solid hsl(var(--border))',
             borderRadius: '8px',
-            color: 'white'
+            color: 'hsl(var(--card-foreground))'
           }}
         />
         <Legend />

@@ -61,22 +61,22 @@ export function DuplicateGroup({ hash, files }: DuplicateGroupProps) {
             {files.map((file, index) => (
               <div
                 key={index}
-                className="flex items-center gap-3 p-3 rounded-md bg-zinc-50 dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                className="flex items-center gap-3 p-3 rounded-md bg-muted/40 hover:bg-muted/70 transition-colors border border-transparent hover:border-border"
               >
-                <FileIcon className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate" title={file.path}>
                     {file.path.split('/').pop()}
                   </div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                  <div className="text-xs text-muted-foreground truncate">
                     {file.path}
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="text-xs text-muted-foreground font-mono truncate">
               Hash: {hash}
             </div>
           </div>

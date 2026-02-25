@@ -86,16 +86,16 @@ export function ScanProgress({ taskId, onComplete, onCancel }: ScanProgressProps
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500 dark:text-zinc-400">Progress</span>
-            <span className="font-medium">{percentage.toFixed(1)}%</span>
+            <span className="text-muted-foreground font-medium">Progress</span>
+            <span className="font-bold text-blue-600 dark:text-blue-400">{percentage.toFixed(1)}%</span>
           </div>
           <Progress value={percentage} />
         </div>
         
         {currentFile && (
-          <div className="space-y-1">
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">Current file:</div>
-            <div className="text-sm font-mono truncate bg-zinc-100 dark:bg-zinc-900 p-2 rounded">
+          <div className="space-y-1.5 pt-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current file:</div>
+            <div className="text-xs font-mono truncate bg-primary/5 dark:bg-primary/10 text-primary p-2.5 rounded-lg border border-primary/10">
               {currentFile}
             </div>
           </div>

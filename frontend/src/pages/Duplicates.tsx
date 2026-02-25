@@ -58,34 +58,34 @@ export function Duplicates() {
     >
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Duplicate Files</h1>
-        <p className="text-zinc-500 dark:text-zinc-400 mt-1">
+        <p className="text-muted-foreground mt-1 text-lg">
           Identify and manage duplicate files to free up storage
         </p>
       </div>
 
       {/* Statistics */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="hover:shadow-lg transition-shadow border-orange-200 dark:border-orange-900">
+        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-orange-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Duplicate Files</CardTitle>
-            <Copy className="h-4 w-4 text-orange-600" />
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Duplicate Files</CardTitle>
+            <Copy className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalDuplicates}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">{totalDuplicates}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
               Files that can be removed
             </p>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow border-red-200 dark:border-red-900">
+        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Wasted Space</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Wasted Space</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatFileSize(wastedSpace)}</div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400">{formatFileSize(wastedSpace)}</div>
+            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
               Storage that can be reclaimed
             </p>
           </CardContent>
@@ -102,7 +102,7 @@ export function Duplicates() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center text-zinc-500 dark:text-zinc-400">
+            <div className="text-center text-muted-foreground">
               <Copy className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>No duplicate files detected</p>
             </div>
@@ -110,7 +110,7 @@ export function Duplicates() {
         </Card>
       ) : (
         <div className="space-y-4">
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
+          <div className="text-sm text-muted-foreground">
             Found {duplicateGroups.size} groups of duplicate files
           </div>
           {Array.from(duplicateGroups.entries()).map(([hash, files]) => (

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { FileTable } from '@/components/FileTable'
 import { getFiles } from '@/api/backend'
 import { motion } from 'framer-motion'
+import { cn } from '@/lib/utils'
 
 export function FolderView() {
   const [files, setFiles] = useState<any[]>([])
@@ -41,7 +42,7 @@ export function FolderView() {
     >
       <div>
         <h1 className="text-3xl font-bold tracking-tight">File Explorer</h1>
-        <p className="text-zinc-500 dark:text-zinc-400 mt-1">
+        <p className="text-muted-foreground mt-1 text-lg">
           Browse and search through all indexed files
         </p>
       </div>
@@ -60,7 +61,7 @@ export function FolderView() {
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search files..."
                 value={searchQuery}
@@ -75,11 +76,12 @@ export function FolderView() {
               <button
                 key={category}
                 onClick={() => setCategoryFilter(category)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-sm font-medium transition-all active:scale-95 shadow-sm",
                   categoryFilter === category
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                }`}
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border"
+                )}
               >
                 {category.charAt(0).toUpperCase() + category.slice(1)}
               </button>
