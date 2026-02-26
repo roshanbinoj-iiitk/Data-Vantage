@@ -1,72 +1,166 @@
-import axios from 'axios'
+// Data-Vantage API Client
+// Communicates with the C++ backend REST API
 
-const API_BASE_URL = 'http://localhost:8000'
+const API_BASE = "/api";
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-export interface ScanTask {
-  id: string
-  status: 'pending' | 'scanning' | 'completed' | 'cancelled' | 'failed'
-  total_bytes: number
-  processed_bytes: number
-  current_file: string
-  percentage: number
-}
+// ---- Types ----
 
 export interface FileEntry {
-  path: string
-  size: number
-  category: string
-  modified?: string
-  hash?: string
+  id: number;
+  path: string;
+  name: string;
+  extension: string;
+  size: number;
+  modifiedTime: number;
+  isDirectory: boolean;
+  hash: string;
+  parentId: number;
 }
 
-export interface ScanStatusResponse {
-  status: string
-  percentage: number
-  current_file: string
+export interface ScanResult {
+  scanId: number;
+  rootPath: string;
+  totalFiles: number;
+  totalDirectories: number;
+  totalSize: number;
+  duplicateGroups: number;
+  duplicateFiles: number;
+  wastedSpace: number;
+  scanDate: string;
+  scanDuration: number;
 }
 
-export interface StartScanResponse {
-  task_id: string
+export interface ScanProgress {
+  filesScanned: number;
+  directoriesScanned: number;
+  totalSize: number;
+  duplicatesFound: number;
+  isScanning: boolean;
+  currentPath: string;
+  elapsedSeconds: number;
 }
 
-// API Functions
-export const startScan = async (rootPath: string): Promise<StartScanResponse> => {
-  const response = await api.post('/api/scan', null, {
-    params: { root_path: rootPath }
-  })
-  return response.data
+export interface DuplicateGroup {
+  hash: string;
+  fileSize: number;
+  wastedSpace: number;
+  fileCount: number;
+  files: FileEntry[];
 }
 
-export const getScanStatus = async (taskId: string): Promise<ScanStatusResponse> => {
-  const response = await api.get(`/api/scan/status/${taskId}`)
-  return response.data
+export interface DuplicateResponse {
+  total: number;
+  groups: DuplicateGroup[];
 }
 
-export const cancelScan = async (taskId: string): Promise<{ message: string }> => {
-  const response = await api.post(`/api/scan/cancel/${taskId}`)
-  return response.data
+export interface FileTypeStats {
+  extension: string;
+  count: number;
+  totalSize: number;
 }
 
-export const cancelAllScans = async (): Promise<{ message: string }> => {
-  const response = await api.post('/api/scan/cancel-all')
-  return response.data
+// ---- API Functions ----
+
+async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${url}`, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ error: "Unknown error" }));
+    throw new Error(error.error || `API error: ${response.status}`);
+  }
+
+  return response.json();
 }
 
-export const getScanHistory = async (): Promise<ScanTask[]> => {
-  const response = await api.get('/api/scan/history')
-  return response.data
+// Health check
+export async function checkHealth(): Promise<{
+  status: string;
+  service: string;
+}> {
+  return apiFetch("/health");
 }
 
-export const getFiles = async (): Promise<FileEntry[]> => {
-  const response = await api.get('/api/scan/files')
-  return response.data
+// ---- Scan Operations ----
+
+export async function startScan(
+  path: string,
+): Promise<{ scanId: number; status: string }> {
+  return apiFetch("/scans", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
 }
 
-export default api
+export async function getScanProgress(scanId: number): Promise<ScanProgress> {
+  return apiFetch(`/scans/${scanId}/progress`);
+}
+
+export async function stopScan(scanId: number): Promise<{ status: string }> {
+  return apiFetch(`/scans/${scanId}/stop`, { method: "POST" });
+}
+
+export async function getScan(scanId: number): Promise<ScanResult> {
+  return apiFetch(`/scans/${scanId}`);
+}
+
+export async function getAllScans(): Promise<ScanResult[]> {
+  return apiFetch("/scans");
+}
+
+export async function deleteScan(scanId: number): Promise<{ status: string }> {
+  return apiFetch(`/scans/${scanId}`, { method: "DELETE" });
+}
+
+// ---- File Operations ----
+
+export async function getFiles(
+  scanId: number,
+  parentId?: number,
+  limit = 100,
+  offset = 0,
+): Promise<FileEntry[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (parentId !== undefined && parentId >= 0) {
+    params.set("parentId", String(parentId));
+  }
+  return apiFetch(`/scans/${scanId}/files?${params}`);
+}
+
+export async function searchFiles(
+  scanId: number,
+  query: string,
+): Promise<FileEntry[]> {
+  return apiFetch(`/scans/${scanId}/search?q=${encodeURIComponent(query)}`);
+}
+
+// ---- Duplicate Operations ----
+
+export async function getDuplicates(
+  scanId: number,
+  limit = 50,
+  offset = 0,
+): Promise<DuplicateResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return apiFetch(`/scans/${scanId}/duplicates?${params}`);
+}
+
+// ---- Statistics ----
+
+export async function getFileTypeStats(
+  scanId: number,
+): Promise<FileTypeStats[]> {
+  return apiFetch(`/scans/${scanId}/stats`);
+}

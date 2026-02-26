@@ -1,0 +1,530 @@
+#include "api_server.h"
+#include "scanner.h"
+#include "hasher.h"
+#include "database.h"
+
+// We use cpp-httplib (header-only). Download it or include via CMake FetchContent.
+#include "httplib.h"
+
+#include <filesystem>
+#include <thread>
+#include <mutex>
+#include <map>
+#include <sstream>
+#include <iostream>
+#include <algorithm>
+#include <chrono>
+#include <atomic>
+#include <unordered_map>
+
+// ============================================================================
+// JSON helpers (minimal, no external dependency)
+// ============================================================================
+
+namespace json
+{
+
+    std::string escape(const std::string &s)
+    {
+        std::string out;
+        out.reserve(s.size() + 10);
+        for (char c : s)
+        {
+            switch (c)
+            {
+            case '"':
+                out += "\\\"";
+                break;
+            case '\\':
+                out += "\\\\";
+                break;
+            case '\n':
+                out += "\\n";
+                break;
+            case '\r':
+                out += "\\r";
+                break;
+            case '\t':
+                out += "\\t";
+                break;
+            default:
+                out += c;
+                break;
+            }
+        }
+        return out;
+    }
+
+    std::string str(const std::string &key, const std::string &val)
+    {
+        return "\"" + key + "\":\"" + escape(val) + "\"";
+    }
+
+    std::string num(const std::string &key, int64_t val)
+    {
+        return "\"" + key + "\":" + std::to_string(val);
+    }
+
+    std::string numf(const std::string &key, double val)
+    {
+        std::ostringstream oss;
+        oss << std::fixed << val;
+        return "\"" + key + "\":" + oss.str();
+    }
+
+    std::string boolean(const std::string &key, bool val)
+    {
+        return "\"" + key + "\":" + (val ? "true" : "false");
+    }
+
+    std::string file_entry_json(const FileEntry &f)
+    {
+        return "{" +
+               num("id", f.id) + "," +
+               str("path", f.path) + "," +
+               str("name", f.name) + "," +
+               str("extension", f.extension) + "," +
+               num("size", f.size) + "," +
+               num("modifiedTime", f.modified_time) + "," +
+               boolean("isDirectory", f.is_directory) + "," +
+               str("hash", f.hash) + "," +
+               num("parentId", f.parent_id) +
+               "}";
+    }
+
+    std::string scan_result_json(const ScanResult &r)
+    {
+        return "{" +
+               num("scanId", r.scan_id) + "," +
+               str("rootPath", r.root_path) + "," +
+               num("totalFiles", r.total_files) + "," +
+               num("totalDirectories", r.total_directories) + "," +
+               num("totalSize", r.total_size) + "," +
+               num("duplicateGroups", r.duplicate_groups) + "," +
+               num("duplicateFiles", r.duplicate_files) + "," +
+               num("wastedSpace", r.wasted_space) + "," +
+               str("scanDate", r.scan_date) + "," +
+               numf("scanDuration", r.scan_duration) +
+               "}";
+    }
+
+    std::string progress_json(const ScanProgress &p)
+    {
+        return "{" +
+               num("filesScanned", p.files_scanned) + "," +
+               num("directoriesScanned", p.directories_scanned) + "," +
+               num("totalSize", p.total_size) + "," +
+               num("duplicatesFound", p.duplicates_found) + "," +
+               boolean("isScanning", p.is_scanning) + "," +
+               str("currentPath", p.current_path) + "," +
+               numf("elapsedSeconds", p.elapsed_seconds) +
+               "}";
+    }
+
+    std::string duplicate_group_json(const DuplicateGroup &g)
+    {
+        std::string files_arr = "[";
+        for (size_t i = 0; i < g.files.size(); i++)
+        {
+            if (i > 0)
+                files_arr += ",";
+            files_arr += file_entry_json(g.files[i]);
+        }
+        files_arr += "]";
+
+        return "{" +
+               str("hash", g.hash) + "," +
+               num("fileSize", g.file_size) + "," +
+               num("wastedSpace", g.wasted_space) + "," +
+               num("fileCount", static_cast<int64_t>(g.files.size())) + "," +
+               "\"files\":" + files_arr +
+               "}";
+    }
+
+    // Simple JSON parser for extracting a string value
+    std::string extract_string(const std::string &json_str, const std::string &key)
+    {
+        std::string search = "\"" + key + "\"";
+        auto pos = json_str.find(search);
+        if (pos == std::string::npos)
+            return "";
+        pos = json_str.find(':', pos);
+        if (pos == std::string::npos)
+            return "";
+        pos = json_str.find('"', pos + 1);
+        if (pos == std::string::npos)
+            return "";
+        auto end = json_str.find('"', pos + 1);
+        if (end == std::string::npos)
+            return "";
+        return json_str.substr(pos + 1, end - pos - 1);
+    }
+
+} // namespace json
+
+// ============================================================================
+// Active scan state
+// ============================================================================
+
+struct ActiveScan
+{
+    int64_t scan_id;
+    std::unique_ptr<Scanner> scanner;
+    std::thread thread;
+    ScanProgress last_progress;
+    bool completed = false;
+};
+
+// ============================================================================
+// API Server Implementation
+// ============================================================================
+
+struct ApiServer::Impl
+{
+    httplib::Server server;
+    std::string host;
+    int port;
+    Database db;
+    std::mutex scan_mutex;
+    std::map<int64_t, std::shared_ptr<ActiveScan>> active_scans;
+
+    Impl(const std::string &h, int p) : host(h), port(p), db("data_vantage.db") {}
+
+    void setup_routes()
+    {
+        // CORS middleware
+        server.set_pre_routing_handler([](const httplib::Request &, httplib::Response &res)
+                                       {
+            res.set_header("Access-Control-Allow-Origin", "*");
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            return httplib::Server::HandlerResponse::Unhandled; });
+
+        server.Options("/(.*)", [](const httplib::Request &, httplib::Response &res)
+                       {
+            res.set_header("Access-Control-Allow-Origin", "*");
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+            res.status = 204; });
+
+        // Health check
+        server.Get("/api/health", [](const httplib::Request &, httplib::Response &res)
+                   { res.set_content("{\"status\":\"ok\",\"service\":\"Data-Vantage\"}", "application/json"); });
+
+        // ---- SCAN ENDPOINTS ----
+
+        // Start a new scan
+        server.Post("/api/scans", [this](const httplib::Request &req, httplib::Response &res)
+                    {
+            std::string path = json::extract_string(req.body, "path");
+            if (path.empty()) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing 'path' in request body\"}", "application/json");
+                return;
+            }
+
+            // Check if path exists
+            if (!std::filesystem::exists(path)) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Path does not exist\"}", "application/json");
+                return;
+            }
+
+            int64_t scan_id = db.create_scan(path);
+
+            auto active = std::make_shared<ActiveScan>();
+            active->scan_id = scan_id;
+            active->scanner = std::make_unique<Scanner>();
+            active->completed = false;
+
+            {
+                std::lock_guard<std::mutex> lock(scan_mutex);
+                active_scans[scan_id] = active;
+            }
+
+            // Start scan in background thread
+            active->thread = std::thread([this, active, path, scan_id]() {
+                active->scanner->scan(path, [&active](const ScanProgress& p) {
+                    active->last_progress = p;
+                });
+
+                auto files = active->scanner->get_files();
+
+                // Hash files and find duplicates
+                std::unordered_map<std::string, std::vector<size_t>> size_groups;
+                for (size_t i = 0; i < files.size(); i++) {
+                    if (!files[i].is_directory && files[i].size > 0) {
+                        size_groups[std::to_string(files[i].size)].push_back(i);
+                    }
+                }
+
+                std::vector<DuplicateGroup> dup_groups;
+                uint64_t total_dup_files = 0;
+                uint64_t total_wasted = 0;
+
+                for (auto& [size_key, indices] : size_groups) {
+                    if (indices.size() < 2) continue;
+
+                    // Quick hash first
+                    std::unordered_map<std::string, std::vector<size_t>> hash_groups;
+                    for (size_t idx : indices) {
+                        std::string h = Hasher::quick_hash(files[idx].path, files[idx].size);
+                        if (!h.empty()) {
+                            files[idx].hash = h;
+                            hash_groups[h].push_back(idx);
+                        }
+                    }
+
+                    // Full hash for groups with matching quick hashes
+                    for (auto& [qhash, qindices] : hash_groups) {
+                        if (qindices.size() < 2) continue;
+
+                        std::unordered_map<std::string, std::vector<size_t>> full_hash_groups;
+                        for (size_t idx : qindices) {
+                            std::string fh = Hasher::hash_file(files[idx].path, files[idx].size);
+                            if (!fh.empty()) {
+                                files[idx].hash = fh;
+                                full_hash_groups[fh].push_back(idx);
+                            }
+                        }
+
+                        for (auto& [fhash, findices] : full_hash_groups) {
+                            if (findices.size() < 2) continue;
+
+                            DuplicateGroup group;
+                            group.hash = fhash;
+                            group.file_size = files[findices[0]].size;
+                            group.wasted_space = group.file_size * (findices.size() - 1);
+
+                            for (size_t idx : findices) {
+                                group.files.push_back(files[idx]);
+                            }
+
+                            total_dup_files += findices.size();
+                            total_wasted += group.wasted_space;
+                            dup_groups.push_back(group);
+                        }
+                    }
+                }
+
+                // Store results in database
+                db.insert_files(scan_id, files);
+                db.store_duplicates(scan_id, dup_groups);
+
+                ScanResult result;
+                result.scan_id = scan_id;
+                result.root_path = path;
+                result.total_files = active->last_progress.files_scanned;
+                result.total_directories = active->last_progress.directories_scanned;
+                result.total_size = active->last_progress.total_size;
+                result.duplicate_groups = dup_groups.size();
+                result.duplicate_files = total_dup_files;
+                result.wasted_space = total_wasted;
+                result.scan_duration = active->last_progress.elapsed_seconds;
+
+                db.complete_scan(scan_id, result);
+                active->completed = true;
+
+                active->last_progress.duplicates_found = dup_groups.size();
+                active->last_progress.is_scanning = false;
+            });
+
+            active->thread.detach();
+
+            res.set_content("{\"scanId\":" + std::to_string(scan_id) + ",\"status\":\"started\"}", "application/json"); });
+
+        // Get scan progress
+        server.Get(R"(/api/scans/(\d+)/progress)", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+
+            std::lock_guard<std::mutex> lock(scan_mutex);
+            auto it = active_scans.find(scan_id);
+            if (it != active_scans.end()) {
+                auto& active = it->second;
+                ScanProgress progress;
+                if (active->scanner && active->scanner->is_scanning()) {
+                    progress = active->scanner->get_progress();
+                } else {
+                    progress = active->last_progress;
+                }
+                res.set_content(json::progress_json(progress), "application/json");
+            } else {
+                // Check if scan exists in DB
+                auto scan = db.get_scan(scan_id);
+                if (scan.scan_id > 0) {
+                    ScanProgress p;
+                    p.files_scanned = scan.total_files;
+                    p.directories_scanned = scan.total_directories;
+                    p.total_size = scan.total_size;
+                    p.duplicates_found = scan.duplicate_groups;
+                    p.is_scanning = false;
+                    p.elapsed_seconds = scan.scan_duration;
+                    res.set_content(json::progress_json(p), "application/json");
+                } else {
+                    res.status = 404;
+                    res.set_content("{\"error\":\"Scan not found\"}", "application/json");
+                }
+            } });
+
+        // Stop a scan
+        server.Post(R"(/api/scans/(\d+)/stop)", [this](const httplib::Request &req, httplib::Response &res)
+                    {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            std::lock_guard<std::mutex> lock(scan_mutex);
+            auto it = active_scans.find(scan_id);
+            if (it != active_scans.end() && it->second->scanner) {
+                it->second->scanner->stop();
+                res.set_content("{\"status\":\"stopping\"}", "application/json");
+            } else {
+                res.status = 404;
+                res.set_content("{\"error\":\"Active scan not found\"}", "application/json");
+            } });
+
+        // Get scan result
+        server.Get(R"(/api/scans/(\d+))", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            auto scan = db.get_scan(scan_id);
+            if (scan.scan_id > 0) {
+                res.set_content(json::scan_result_json(scan), "application/json");
+            } else {
+                res.status = 404;
+                res.set_content("{\"error\":\"Scan not found\"}", "application/json");
+            } });
+
+        // Get all scans
+        server.Get("/api/scans", [this](const httplib::Request &, httplib::Response &res)
+                   {
+            auto scans = db.get_all_scans();
+            std::string arr = "[";
+            for (size_t i = 0; i < scans.size(); i++) {
+                if (i > 0) arr += ",";
+                arr += json::scan_result_json(scans[i]);
+            }
+            arr += "]";
+            res.set_content(arr, "application/json"); });
+
+        // Delete a scan
+        server.Delete(R"(/api/scans/(\d+))", [this](const httplib::Request &req, httplib::Response &res)
+                      {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            db.delete_scan(scan_id);
+            {
+                std::lock_guard<std::mutex> lock(scan_mutex);
+                active_scans.erase(scan_id);
+            }
+            res.set_content("{\"status\":\"deleted\"}", "application/json"); });
+
+        // ---- FILE ENDPOINTS ----
+
+        // Get files for a scan
+        server.Get(R"(/api/scans/(\d+)/files)", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            int64_t parent_id = -1;
+            int limit = 100;
+            int offset = 0;
+
+            if (req.has_param("parentId")) parent_id = std::stoll(req.get_param_value("parentId"));
+            if (req.has_param("limit")) limit = std::stoi(req.get_param_value("limit"));
+            if (req.has_param("offset")) offset = std::stoi(req.get_param_value("offset"));
+
+            auto files = db.get_files(scan_id, parent_id, limit, offset);
+            std::string arr = "[";
+            for (size_t i = 0; i < files.size(); i++) {
+                if (i > 0) arr += ",";
+                arr += json::file_entry_json(files[i]);
+            }
+            arr += "]";
+            res.set_content(arr, "application/json"); });
+
+        // Search files
+        server.Get(R"(/api/scans/(\d+)/search)", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            std::string query = req.has_param("q") ? req.get_param_value("q") : "";
+
+            if (query.empty()) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing 'q' query parameter\"}", "application/json");
+                return;
+            }
+
+            auto files = db.search_files(scan_id, query);
+            std::string arr = "[";
+            for (size_t i = 0; i < files.size(); i++) {
+                if (i > 0) arr += ",";
+                arr += json::file_entry_json(files[i]);
+            }
+            arr += "]";
+            res.set_content(arr, "application/json"); });
+
+        // ---- DUPLICATE ENDPOINTS ----
+
+        // Get duplicates for a scan
+        server.Get(R"(/api/scans/(\d+)/duplicates)", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            int limit = 50;
+            int offset = 0;
+
+            if (req.has_param("limit")) limit = std::stoi(req.get_param_value("limit"));
+            if (req.has_param("offset")) offset = std::stoi(req.get_param_value("offset"));
+
+            auto groups = db.get_duplicates(scan_id, limit, offset);
+            uint64_t total = db.get_duplicate_count(scan_id);
+
+            std::string arr = "[";
+            for (size_t i = 0; i < groups.size(); i++) {
+                if (i > 0) arr += ",";
+                arr += json::duplicate_group_json(groups[i]);
+            }
+            arr += "]";
+
+            std::string result = "{\"total\":" + std::to_string(total) + ",\"groups\":" + arr + "}";
+            res.set_content(result, "application/json"); });
+
+        // ---- STATISTICS ENDPOINTS ----
+
+        // Get file type statistics
+        server.Get(R"(/api/scans/(\d+)/stats)", [this](const httplib::Request &req, httplib::Response &res)
+                   {
+            int64_t scan_id = std::stoll(req.matches[1]);
+            auto stats = db.get_file_type_stats(scan_id);
+
+            std::string arr = "[";
+            for (size_t i = 0; i < stats.size(); i++) {
+                if (i > 0) arr += ",";
+                arr += "{" +
+                    json::str("extension", stats[i].extension) + "," +
+                    json::num("count", stats[i].count) + "," +
+                    json::num("totalSize", stats[i].total_size) +
+                "}";
+            }
+            arr += "]";
+            res.set_content(arr, "application/json"); });
+    }
+};
+
+ApiServer::ApiServer(const std::string &host, int port)
+    : m_impl(std::make_unique<Impl>(host, port))
+{
+    m_impl->setup_routes();
+}
+
+ApiServer::~ApiServer()
+{
+    stop();
+}
+
+void ApiServer::start()
+{
+    std::cout << "Data-Vantage API Server starting on " << m_impl->host << ":" << m_impl->port << std::endl;
+    m_impl->server.listen(m_impl->host, m_impl->port);
+}
+
+void ApiServer::stop()
+{
+    m_impl->server.stop();
+}

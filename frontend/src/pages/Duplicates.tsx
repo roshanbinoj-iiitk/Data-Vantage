@@ -1,123 +1,152 @@
-import { useState, useEffect } from 'react'
-import { Copy, AlertTriangle } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { DuplicateGroup } from '@/components/DuplicateGroup'
-import { getFiles } from '@/api/backend'
-import { formatFileSize } from '@/lib/utils'
-import { motion } from 'framer-motion'
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { DuplicateGroupCard } from "@/components/DuplicateGroup";
+import {
+  getDuplicates,
+  getScan,
+  type DuplicateGroup,
+  type ScanResult,
+} from "@/api/backend";
+import { formatBytes, formatNumber } from "@/lib/utils";
 
 export function Duplicates() {
-  const [duplicateGroups, setDuplicateGroups] = useState<Map<string, any[]>>(new Map())
+  const { scanId } = useParams<{ scanId: string }>();
+  const navigate = useNavigate();
+  const [groups, setGroups] = useState<DuplicateGroup[]>([]);
+  const [total, setTotal] = useState(0);
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState(0);
+  const limit = 20;
 
   useEffect(() => {
-    loadFiles()
-  }, [])
+    if (!scanId) return;
+    const id = parseInt(scanId);
 
-  const loadFiles = async () => {
-    try {
-      const data = await getFiles()
-      
-      // Group files by hash to find duplicates
-      const groups = new Map<string, any[]>()
-      data.forEach(file => {
-        if (file.hash) {
-          if (!groups.has(file.hash)) {
-            groups.set(file.hash, [])
-          }
-          groups.get(file.hash)!.push(file)
-        }
+    setLoading(true);
+    Promise.all([getDuplicates(id, limit, offset), getScan(id)])
+      .then(([dupData, scanData]) => {
+        setGroups(dupData.groups);
+        setTotal(dupData.total);
+        setScan(scanData);
       })
-      
-      // Filter to only keep groups with 2+ files
-      const duplicates = new Map(
-        Array.from(groups.entries()).filter(([_, files]) => files.length >= 2)
-      )
-      
-      setDuplicateGroups(duplicates)
-    } catch (error) {
-      console.error('Failed to load files:', error)
-    }
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [scanId, offset]);
+
+  if (!scanId) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No scan selected.</p>
+        <Button variant="link" onClick={() => navigate("/")}>
+          Go to Dashboard
+        </Button>
+      </div>
+    );
   }
 
-  const totalDuplicates = Array.from(duplicateGroups.values()).reduce(
-    (acc, group) => acc + group.length - 1,
-    0
-  )
-
-  const wastedSpace = Array.from(duplicateGroups.values()).reduce(
-    (acc, group) => acc + (group[0].size * (group.length - 1)),
-    0
-  )
+  const totalWasted = groups.reduce((sum, g) => sum + g.wastedSpace, 0);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6"
-    >
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Duplicate Files</h1>
-        <p className="text-muted-foreground mt-1 text-lg">
-          Identify and manage duplicate files to free up storage
-        </p>
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Duplicate Files</h1>
+          {scan && (
+            <p className="text-muted-foreground text-sm mt-1">
+              Scan: {scan.rootPath}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" onClick={() => navigate("/")}>
+          ← Back
+        </Button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-orange-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Duplicate Files</CardTitle>
-            <Copy className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">{totalDuplicates}</div>
-            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
-              Files that can be removed
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-3xl font-bold">{formatNumber(total)}</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Duplicate Groups
             </p>
           </CardContent>
         </Card>
-
-        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-red-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">Wasted Space</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400">{formatFileSize(wastedSpace)}</div>
-            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
-              Storage that can be reclaimed
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-3xl font-bold text-destructive">
+              {formatBytes(totalWasted)}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">Wasted Space</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <div className="text-3xl font-bold">
+              {scan ? formatNumber(scan.duplicateFiles) : "0"}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Total Duplicate Files
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* Duplicate Groups */}
-      {duplicateGroups.size === 0 ? (
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="animate-pulse-slow text-muted-foreground">
+            Loading duplicates...
+          </div>
+        </div>
+      ) : groups.length === 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle>No Duplicates Found</CardTitle>
-            <CardDescription>
-              Run a scan to detect duplicate files in your system
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center text-muted-foreground">
-              <Copy className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No duplicate files detected</p>
-            </div>
+          <CardContent className="py-12 text-center">
+            <div className="text-4xl mb-3">🎉</div>
+            <h3 className="text-lg font-semibold">No Duplicates Found</h3>
+            <p className="text-muted-foreground mt-1">
+              Your files are all unique. Great job keeping things tidy!
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          <div className="text-sm text-muted-foreground">
-            Found {duplicateGroups.size} groups of duplicate files
-          </div>
-          {Array.from(duplicateGroups.entries()).map(([hash, files]) => (
-            <DuplicateGroup key={hash} hash={hash} files={files} />
+          {groups.map((group, idx) => (
+            <DuplicateGroupCard
+              key={group.hash}
+              group={group}
+              index={offset + idx}
+            />
           ))}
         </div>
       )}
-    </motion.div>
-  )
+
+      {/* Pagination */}
+      {total > limit && (
+        <div className="flex items-center justify-center gap-4 py-4">
+          <Button
+            variant="outline"
+            disabled={offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - limit))}
+          >
+            ← Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {offset + 1}–{Math.min(offset + limit, total)} of {total}
+          </span>
+          <Button
+            variant="outline"
+            disabled={offset + limit >= total}
+            onClick={() => setOffset(offset + limit)}
+          >
+            Next →
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
