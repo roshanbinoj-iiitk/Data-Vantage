@@ -115,9 +115,12 @@ namespace json
                num("directoriesScanned", p.directories_scanned) + "," +
                num("totalSize", p.total_size) + "," +
                num("duplicatesFound", p.duplicates_found) + "," +
+               num("skippedFiles", p.skipped_files) + "," +
                boolean("isScanning", p.is_scanning) + "," +
                str("currentPath", p.current_path) + "," +
-               numf("elapsedSeconds", p.elapsed_seconds) +
+               numf("elapsedSeconds", p.elapsed_seconds) + "," +
+               numf("estimatedSecondsRemaining", p.estimated_seconds_remaining) + "," +
+               numf("filesPerSecond", p.files_per_second) +
                "}";
     }
 
@@ -175,6 +178,10 @@ struct ActiveScan
     bool completed = false;
     std::string status = "scanning";                     // "scanning", "hashing", "completed"
     std::chrono::steady_clock::time_point start_time;    // tracks wall-clock from scan start
+    // Hashing progress tracking
+    std::atomic<uint64_t> hash_files_total{0};
+    std::atomic<uint64_t> hash_files_done{0};
+    std::chrono::steady_clock::time_point hash_start_time;
 };
 
 // ============================================================================
@@ -265,6 +272,15 @@ struct ApiServer::Impl
                     }
                 }
 
+                // Count total files that need hashing (in groups of 2+)
+                uint64_t total_to_hash = 0;
+                for (auto& [size_key, indices] : size_groups) {
+                    if (indices.size() >= 2) total_to_hash += indices.size();
+                }
+                active->hash_files_total = total_to_hash;
+                active->hash_files_done = 0;
+                active->hash_start_time = std::chrono::steady_clock::now();
+
                 std::vector<DuplicateGroup> dup_groups;
                 uint64_t total_dup_files = 0;
                 uint64_t total_wasted = 0;
@@ -280,6 +296,7 @@ struct ApiServer::Impl
                             files[idx].hash = h;
                             hash_groups[h].push_back(idx);
                         }
+                        active->hash_files_done++;
                     }
 
                     // Full hash for groups with matching quick hashes
@@ -369,6 +386,19 @@ struct ApiServer::Impl
                         std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - active->start_time)
                             .count();
+
+                    // Compute hashing ETA if in hashing phase
+                    if (active->status == "hashing" && active->hash_files_total > 0) {
+                        uint64_t done = active->hash_files_done.load();
+                        uint64_t total_h = active->hash_files_total.load();
+                        if (done > 0) {
+                            double hash_elapsed = std::chrono::duration<double>(
+                                std::chrono::steady_clock::now() - active->hash_start_time).count();
+                            double rate = static_cast<double>(done) / hash_elapsed;
+                            double remaining = static_cast<double>(total_h - done) / rate;
+                            progress.estimated_seconds_remaining = remaining;
+                        }
+                    }
                 }
                 // Append a "status" field to the JSON response
                 std::string body = json::progress_json(progress);
@@ -384,8 +414,11 @@ struct ApiServer::Impl
                     p.directories_scanned = scan.total_directories;
                     p.total_size = scan.total_size;
                     p.duplicates_found = scan.duplicate_groups;
+                    p.skipped_files = 0;
                     p.is_scanning = false;
                     p.elapsed_seconds = scan.scan_duration;
+                    p.estimated_seconds_remaining = 0.0;
+                    p.files_per_second = 0.0;
                     res.set_content(json::progress_json(p), "application/json");
                 } else {
                     res.status = 404;

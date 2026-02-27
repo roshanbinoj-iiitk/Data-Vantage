@@ -35,9 +35,12 @@ export interface ScanProgress {
   directoriesScanned: number;
   totalSize: number;
   duplicatesFound: number;
+  skippedFiles: number;
   isScanning: boolean;
   currentPath: string;
   elapsedSeconds: number;
+  estimatedSecondsRemaining: number; // -1 if unknown
+  filesPerSecond: number;
   status?: string; // "scanning" | "hashing" | "completed"
 }
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Copy, AlertTriangle } from "lucide-react";
+import { Copy, AlertTriangle, ArrowUpDown, Search } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DuplicateGroupCard } from "@/components/DuplicateGroup";
 import {
   getDuplicates,
@@ -20,6 +21,42 @@ import {
 import { formatBytes, formatNumber } from "@/lib/utils";
 import { motion } from "framer-motion";
 
+type SortField = "name" | "size" | "path" | "count" | "wasted";
+type SortDir = "asc" | "desc";
+
+function sortGroups(
+  groups: DuplicateGroup[],
+  field: SortField,
+  dir: SortDir,
+): DuplicateGroup[] {
+  const sorted = [...groups];
+  const mul = dir === "asc" ? 1 : -1;
+
+  sorted.sort((a, b) => {
+    switch (field) {
+      case "name": {
+        const nameA = a.files[0]?.name ?? "";
+        const nameB = b.files[0]?.name ?? "";
+        return mul * nameA.localeCompare(nameB);
+      }
+      case "size":
+        return mul * (a.fileSize - b.fileSize);
+      case "path": {
+        const pathA = a.files[0]?.path ?? "";
+        const pathB = b.files[0]?.path ?? "";
+        return mul * pathA.localeCompare(pathB);
+      }
+      case "count":
+        return mul * (a.fileCount - b.fileCount);
+      case "wasted":
+        return mul * (a.wastedSpace - b.wastedSpace);
+      default:
+        return 0;
+    }
+  });
+  return sorted;
+}
+
 export function Duplicates() {
   const { scanId } = useParams<{ scanId: string }>();
   const navigate = useNavigate();
@@ -29,6 +66,11 @@ export function Duplicates() {
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
   const limit = 20;
+
+  // Sort & filter state
+  const [sortField, setSortField] = useState<SortField>("wasted");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [filterText, setFilterText] = useState("");
 
   // Auto-select latest scan if none specified
   useEffect(() => {
@@ -60,8 +102,42 @@ export function Duplicates() {
       .finally(() => setLoading(false));
   }, [scanId, offset]);
 
+  // Apply filter + sort
+  const displayGroups = useMemo(() => {
+    let filtered = groups;
+    if (filterText.trim()) {
+      const q = filterText.toLowerCase();
+      filtered = groups.filter((g) =>
+        g.files.some(
+          (f) =>
+            f.name.toLowerCase().includes(q) ||
+            f.path.toLowerCase().includes(q) ||
+            f.extension.toLowerCase().includes(q),
+        ),
+      );
+    }
+    return sortGroups(filtered, sortField, sortDir);
+  }, [groups, filterText, sortField, sortDir]);
+
   const totalDuplicates = groups.reduce((sum, g) => sum + g.fileCount - 1, 0);
   const wastedSpace = groups.reduce((sum, g) => sum + g.wastedSpace, 0);
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir(field === "name" || field === "path" ? "asc" : "desc");
+    }
+  }
+
+  const sortButtons: { field: SortField; label: string }[] = [
+    { field: "name", label: "Name" },
+    { field: "size", label: "Size" },
+    { field: "path", label: "Path" },
+    { field: "count", label: "Count" },
+    { field: "wasted", label: "Wasted" },
+  ];
 
   if (!scanId) {
     return (
@@ -171,6 +247,49 @@ export function Duplicates() {
         </Card>
       </div>
 
+      {/* Sort & Filter toolbar */}
+      {!loading && groups.length > 0 && (
+        <Card className="shadow-sm">
+          <CardContent className="py-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              {/* Filter input */}
+              <div className="relative flex-1 w-full sm:max-w-xs">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Filter by name or path…"
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  className="pl-9 h-9"
+                />
+              </div>
+
+              {/* Sort buttons */}
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
+                  <ArrowUpDown className="h-3 w-3" /> Sort:
+                </span>
+                {sortButtons.map((btn) => (
+                  <Button
+                    key={btn.field}
+                    variant={sortField === btn.field ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs px-2"
+                    onClick={() => toggleSort(btn.field)}
+                  >
+                    {btn.label}
+                    {sortField === btn.field && (
+                      <span className="ml-1">
+                        {sortDir === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12">
@@ -197,9 +316,11 @@ export function Duplicates() {
       ) : (
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            Found {total} groups of duplicate files
+            {filterText.trim()
+              ? `Showing ${displayGroups.length} of ${total} groups`
+              : `Found ${total} groups of duplicate files`}
           </div>
-          {groups.map((group, idx) => (
+          {displayGroups.map((group, idx) => (
             <DuplicateGroupCard
               key={group.hash}
               group={group}

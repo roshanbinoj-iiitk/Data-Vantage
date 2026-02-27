@@ -6,6 +6,8 @@
 #include <atomic>
 #include <mutex>
 #include <cstdint>
+#include <set>
+#include <utility>
 
 struct FileEntry
 {
@@ -26,9 +28,12 @@ struct ScanProgress
     uint64_t directories_scanned;
     uint64_t total_size;
     uint64_t duplicates_found;
+    uint64_t skipped_files;
     bool is_scanning;
     std::string current_path;
     double elapsed_seconds;
+    double estimated_seconds_remaining; // -1 if unknown
+    double files_per_second;
 };
 
 using ProgressCallback = std::function<void(const ScanProgress &)>;
@@ -65,9 +70,14 @@ private:
     std::atomic<uint64_t> m_dirs_scanned;
     std::atomic<uint64_t> m_total_size;
     std::atomic<uint64_t> m_duplicates_found;
+    std::atomic<uint64_t> m_skipped_files;
     std::string m_current_path;
     mutable std::mutex m_path_mutex;
     ProgressCallback m_callback;
     std::chrono::steady_clock::time_point m_start_time;
     int64_t m_next_id;
+
+    // Track visited inodes to avoid counting hard links multiple times
+    std::set<std::pair<uint64_t, uint64_t>> m_visited_inodes; // (dev, ino)
+    std::mutex m_inode_mutex;
 };

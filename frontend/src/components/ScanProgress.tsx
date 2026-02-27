@@ -16,20 +16,62 @@ interface ScanProgressProps {
   onCancel?: () => void;
 }
 
+function statusLabel(progress: ScanProgress): string {
+  if (!progress.isScanning) return "Completed";
+  if (progress.status === "hashing") return "Hashing duplicates…";
+  return "Scanning…";
+}
+
+function statusVariant(
+  progress: ScanProgress,
+): "default" | "success" | "secondary" {
+  if (!progress.isScanning) return "success";
+  if (progress.status === "hashing") return "secondary";
+  return "default";
+}
+
+/** Compute a synthetic 0-100 progress value used by the bar. */
+function computeProgressValue(progress: ScanProgress): number {
+  if (!progress.isScanning) return 100;
+  if (progress.status === "hashing") {
+    const eta = progress.estimatedSecondsRemaining;
+    if (eta > 0 && progress.elapsedSeconds > 0) {
+      // During hashing we can estimate actual completion %
+      // Use a capped value so the bar never appears to go backward
+      const pct = Math.min(
+        95,
+        Math.max(
+          5,
+          ((progress.elapsedSeconds - eta) / progress.elapsedSeconds) * 100,
+        ),
+      );
+      return pct;
+    }
+    return 60; // indeterminate hashing
+  }
+  // During scanning, use a logarithmic scale so the bar keeps growing
+  // without ever reaching 100%
+  const files = progress.filesScanned;
+  if (files <= 0) return 2;
+  // log10(files)/log10(target) capped at 50 — gives smooth growth
+  const pct = Math.min(50, (Math.log10(files + 1) / Math.log10(100000)) * 50);
+  return Math.max(2, pct);
+}
+
 export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
+  const pct = computeProgressValue(progress);
+  const eta = progress.estimatedSecondsRemaining;
+  const fps = progress.filesPerSecond;
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Scan Progress</CardTitle>
           <div className="flex items-center gap-2">
-            {progress.isScanning ? (
-              <Badge variant="default">
-                {progress.status === "hashing" ? "Hashing duplicates…" : "Scanning…"}
-              </Badge>
-            ) : (
-              <Badge variant="success">Completed</Badge>
-            )}
+            <Badge variant={statusVariant(progress)}>
+              {statusLabel(progress)}
+            </Badge>
             {progress.isScanning && onCancel && (
               <Button
                 variant="ghost"
@@ -44,6 +86,7 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Progress bar */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground font-medium">Progress</span>
@@ -51,9 +94,10 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
               {formatNumber(progress.filesScanned)} files
             </span>
           </div>
-          <Progress value={progress.isScanning ? 50 : 100} />
+          <Progress value={pct} />
         </div>
 
+        {/* Stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           <div>
             <div className="text-lg font-bold">
@@ -81,6 +125,43 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
           </div>
         </div>
 
+        {/* Rate & ETA row */}
+        {progress.isScanning && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div>
+              {fps > 0 && (
+                <span>
+                  <span className="font-semibold text-foreground">
+                    {formatNumber(Math.round(fps))}
+                  </span>{" "}
+                  files/sec
+                </span>
+              )}
+            </div>
+            <div>
+              {eta > 0 ? (
+                <span>
+                  ETA:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatDuration(eta)}
+                  </span>
+                </span>
+              ) : progress.status === "scanning" ? (
+                <span className="italic">Estimating…</span>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* Skipped files */}
+        {progress.skippedFiles > 0 && (
+          <div className="text-sm text-yellow-600 dark:text-yellow-400">
+            {formatNumber(progress.skippedFiles)} files skipped (symlinks, hard
+            links, or permission errors)
+          </div>
+        )}
+
+        {/* Duplicates found */}
         {progress.duplicatesFound > 0 && (
           <div className="text-sm text-muted-foreground">
             Found{" "}
@@ -91,6 +172,7 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
           </div>
         )}
 
+        {/* Current path */}
         {progress.currentPath && progress.isScanning && (
           <div className="space-y-1.5 pt-2">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
