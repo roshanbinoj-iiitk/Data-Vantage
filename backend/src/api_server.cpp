@@ -176,8 +176,8 @@ struct ActiveScan
     std::thread thread;
     ScanProgress last_progress;
     bool completed = false;
-    std::string status = "scanning";                     // "scanning", "hashing", "completed"
-    std::chrono::steady_clock::time_point start_time;    // tracks wall-clock from scan start
+    std::string status = "scanning";                  // "scanning", "hashing", "completed"
+    std::chrono::steady_clock::time_point start_time; // tracks wall-clock from scan start
     // Hashing progress tracking
     std::atomic<uint64_t> hash_files_total{0};
     std::atomic<uint64_t> hash_files_done{0};
