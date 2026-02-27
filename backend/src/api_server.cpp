@@ -173,6 +173,8 @@ struct ActiveScan
     std::thread thread;
     ScanProgress last_progress;
     bool completed = false;
+    std::string status = "scanning";                     // "scanning", "hashing", "completed"
+    std::chrono::steady_clock::time_point start_time;    // tracks wall-clock from scan start
 };
 
 // ============================================================================
@@ -236,6 +238,8 @@ struct ApiServer::Impl
             active->scan_id = scan_id;
             active->scanner = std::make_unique<Scanner>();
             active->completed = false;
+            active->status = "scanning";
+            active->start_time = std::chrono::steady_clock::now();
 
             {
                 std::lock_guard<std::mutex> lock(scan_mutex);
@@ -247,6 +251,9 @@ struct ApiServer::Impl
                 active->scanner->scan(path, [&active](const ScanProgress& p) {
                     active->last_progress = p;
                 });
+
+                // Filesystem walk done; now hashing duplicates
+                active->status = "hashing";
 
                 auto files = active->scanner->get_files();
 
@@ -323,10 +330,15 @@ struct ApiServer::Impl
                 result.scan_duration = active->last_progress.elapsed_seconds;
 
                 db.complete_scan(scan_id, result);
-                active->completed = true;
 
                 active->last_progress.duplicates_found = dup_groups.size();
                 active->last_progress.is_scanning = false;
+                active->last_progress.elapsed_seconds =
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - active->start_time)
+                        .count();
+                active->status = "completed";
+                active->completed = true;
             });
 
             active->thread.detach();
@@ -348,7 +360,21 @@ struct ApiServer::Impl
                 } else {
                     progress = active->last_progress;
                 }
-                res.set_content(json::progress_json(progress), "application/json");
+                // While the background thread is still running (scanning or hashing),
+                // keep reporting isScanning=true with a live elapsed time so the
+                // frontend continues to poll and the timer keeps ticking.
+                if (!active->completed) {
+                    progress.is_scanning = true;
+                    progress.elapsed_seconds =
+                        std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - active->start_time)
+                            .count();
+                }
+                // Append a "status" field to the JSON response
+                std::string body = json::progress_json(progress);
+                body.pop_back(); // remove trailing '}'
+                body += "," + json::str("status", active->status) + "}";
+                res.set_content(body, "application/json");
             } else {
                 // Check if scan exists in DB
                 auto scan = db.get_scan(scan_id);

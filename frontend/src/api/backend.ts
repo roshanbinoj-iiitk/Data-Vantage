@@ -38,6 +38,7 @@ export interface ScanProgress {
   isScanning: boolean;
   currentPath: string;
   elapsedSeconds: number;
+  status?: string; // "scanning" | "hashing" | "completed"
 }
 
 export interface DuplicateGroup {

@@ -24,7 +24,9 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
           <CardTitle className="text-lg">Scan Progress</CardTitle>
           <div className="flex items-center gap-2">
             {progress.isScanning ? (
-              <Badge variant="default">Scanning</Badge>
+              <Badge variant="default">
+                {progress.status === "hashing" ? "Hashing duplicates…" : "Scanning…"}
+              </Badge>
             ) : (
               <Badge variant="success">Completed</Badge>
             )}
