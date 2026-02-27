@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardContent } from "@/components/ui/card";
+import { Search, Filter } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileTable } from "@/components/FileTable";
@@ -8,9 +15,11 @@ import {
   getFiles,
   searchFiles,
   getScan,
+  getAllScans,
   type FileEntry,
   type ScanResult,
 } from "@/api/backend";
+import { motion } from "framer-motion";
 
 interface BreadcrumbItem {
   id: number;
@@ -27,6 +36,21 @@ export function FolderView() {
   const [isSearching, setIsSearching] = useState(false);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [currentParentId, setCurrentParentId] = useState(0);
+
+  // Auto-select latest scan if none specified
+  useEffect(() => {
+    if (!scanId) {
+      getAllScans()
+        .then((scans) => {
+          if (scans.length > 0) {
+            navigate(`/files/${scans[0].scanId}`, { replace: true });
+          } else {
+            setLoading(false);
+          }
+        })
+        .catch(() => setLoading(false));
+    }
+  }, [scanId, navigate]);
 
   const loadFiles = useCallback(
     async (parentId: number) => {
@@ -61,7 +85,6 @@ export function FolderView() {
 
   const handleBreadcrumbClick = (index: number) => {
     if (index === -1) {
-      // Root
       setCurrentParentId(0);
       setBreadcrumbs([]);
       loadFiles(0);
@@ -96,56 +119,98 @@ export function FolderView() {
 
   if (!scanId) {
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">No scan selected.</p>
-        <Button variant="link" onClick={() => navigate("/")}>
-          Go to Dashboard
-        </Button>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="space-y-6"
+      >
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">File Explorer</h1>
+          <p className="text-muted-foreground mt-1 text-lg">
+            Browse and search through all indexed files
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>No Scan Selected</CardTitle>
+            <CardDescription>
+              Run a scan from the Dashboard to explore files
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-center py-12">
+            <div className="text-center text-muted-foreground">
+              <Filter className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>No scan data available</p>
+              <Button
+                variant="link"
+                onClick={() => navigate("/")}
+                className="mt-2"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">File Browser</h1>
-          {scan && (
-            <p className="text-muted-foreground text-sm mt-1">
-              {scan.rootPath}
-            </p>
-          )}
-        </div>
-        <Button variant="outline" onClick={() => navigate("/")}>
-          ← Back
-        </Button>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">File Explorer</h1>
+        <p className="text-muted-foreground mt-1 text-lg">
+          {scan ? scan.rootPath : "Browse and search through all indexed files"}
+        </p>
       </div>
 
-      {/* Search */}
-      <div className="flex gap-3">
-        <Input
-          placeholder="Search files..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-        />
-        <Button variant="secondary" onClick={handleSearch}>
-          Search
-        </Button>
-        {isSearching && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setSearchQuery("");
-              setIsSearching(false);
-              loadFiles(currentParentId);
-            }}
-          >
-            Clear
-          </Button>
-        )}
-      </div>
+      {/* Search and Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Search & Navigate
+          </CardTitle>
+          <CardDescription>
+            Search files by name or browse the directory tree
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search files..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                className="pl-9"
+              />
+            </div>
+            <Button variant="secondary" onClick={handleSearch}>
+              Search
+            </Button>
+            {isSearching && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearchQuery("");
+                  setIsSearching(false);
+                  loadFiles(currentParentId);
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Breadcrumbs */}
       {!isSearching && (
@@ -176,7 +241,15 @@ export function FolderView() {
 
       {/* File Table */}
       <Card>
-        <CardContent className="p-0">
+        <CardHeader>
+          <CardTitle>Files ({files.length})</CardTitle>
+          <CardDescription>
+            {isSearching
+              ? "Showing search results"
+              : "All indexed files in current directory"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-pulse-slow text-muted-foreground">
@@ -192,6 +265,6 @@ export function FolderView() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 }

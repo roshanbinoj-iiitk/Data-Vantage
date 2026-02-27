@@ -2,8 +2,8 @@ import {
   PieChart as RechartsPie,
   Pie,
   Cell,
-  Tooltip,
   ResponsiveContainer,
+  Tooltip,
   Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,40 +13,28 @@ import { type FileTypeStats } from "@/api/backend";
 interface PieChartProps {
   data: FileTypeStats[];
   title?: string;
-  showBySize?: boolean;
 }
 
 const COLORS = [
-  "#6366f1",
-  "#ec4899",
-  "#f59e0b",
-  "#10b981",
-  "#3b82f6",
   "#8b5cf6",
   "#ef4444",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#06b6d4",
+  "#6b7280",
+  "#ec4899",
   "#14b8a6",
   "#f97316",
-  "#06b6d4",
-  "#84cc16",
-  "#e879f9",
-  "#22d3ee",
-  "#a3e635",
-  "#fb923c",
-  "#818cf8",
-  "#f472b6",
-  "#fbbf24",
-  "#34d399",
-  "#60a5fa",
 ];
 
 export function PieChartCard({
   data,
-  title = "File Types",
-  showBySize = true,
+  title = "Storage Distribution",
 }: PieChartProps) {
   const chartData = data.slice(0, 10).map((item) => ({
-    name: item.extension,
-    value: showBySize ? item.totalSize : item.count,
+    name: item.extension || "Unknown",
+    value: item.totalSize,
     count: item.count,
     size: item.totalSize,
   }));
@@ -57,36 +45,16 @@ export function PieChartCard({
     const otherSize = data.slice(10).reduce((sum, d) => sum + d.totalSize, 0);
     chartData.push({
       name: "Other",
-      value: showBySize ? otherSize : otherCount,
+      value: otherSize,
       count: otherCount,
       size: otherSize,
     });
   }
 
-  const CustomTooltip = ({
-    active,
-    payload,
-  }: {
-    active?: boolean;
-    payload?: Array<{ payload: { name: string; count: number; size: number } }>;
-  }) => {
-    if (active && payload && payload.length) {
-      const item = payload[0].payload;
-      return (
-        <div className="bg-card border rounded-lg shadow-lg p-3 text-sm">
-          <p className="font-semibold">{item.name}</p>
-          <p className="text-muted-foreground">{item.count} files</p>
-          <p className="text-muted-foreground">{formatBytes(item.size)}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">{title}</CardTitle>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
@@ -100,10 +68,15 @@ export function PieChartCard({
                 data={chartData}
                 cx="50%"
                 cy="50%"
-                innerRadius={60}
+                labelLine={false}
+                label={({ name, percent }) =>
+                  `${name} ${((percent || 0) * 100).toFixed(0)}%`
+                }
                 outerRadius={100}
-                paddingAngle={2}
+                fill="#8884d8"
                 dataKey="value"
+                animationBegin={0}
+                animationDuration={800}
               >
                 {chartData.map((_entry, index) => (
                   <Cell
@@ -112,12 +85,19 @@ export function PieChartCard({
                   />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                formatter={(value: string) => (
-                  <span className="text-xs text-foreground">{value}</span>
-                )}
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
+                  color: "hsl(var(--card-foreground))",
+                }}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(_value: any, _name: any, entry: any) => [
+                  `${entry.payload.count} files, ${formatBytes(entry.payload.size)}`,
+                ]}
               />
+              <Legend />
             </RechartsPie>
           </ResponsiveContainer>
         )}

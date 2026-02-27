@@ -1,5 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Play,
+  HardDrive,
+  Files,
+  Clock,
+  Copy,
+  AlertTriangle,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -10,8 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScanProgressCard } from "@/components/ScanProgress";
 import { PieChartCard } from "@/components/PieChart";
+import { ScanProgressCard } from "@/components/ScanProgress";
 import { useScan } from "@/hooks/use-scan";
 import {
   getFileTypeStats,
@@ -19,7 +27,7 @@ import {
   type FileTypeStats,
 } from "@/api/backend";
 import { formatBytes, formatNumber, formatDuration } from "@/lib/utils";
-import { useEffect } from "react";
+import { motion } from "framer-motion";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -65,29 +73,47 @@ export function Dashboard() {
   const latestScan = currentScan || (scans.length > 0 ? scans[0] : null);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground mt-1 text-lg">
+          Monitor your storage and manage file scans
+        </p>
+      </div>
+
       {/* Scan Input */}
-      <Card>
+      <Card className="shadow-md">
         <CardHeader>
-          <CardTitle>Start a New Scan</CardTitle>
-          <CardDescription>
-            Enter a directory path to scan for files and detect duplicates.
+          <CardTitle className="flex items-center gap-2">
+            <Play className="h-5 w-5 text-blue-600" />
+            Start New Scan
+          </CardTitle>
+          <CardDescription className="font-medium">
+            Enter a directory path to scan for files and duplicates
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <Input
-              placeholder="/home/user/Documents"
+              placeholder="/path/to/directory"
               value={scanPath}
               onChange={(e) => setScanPath(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleStartScan()}
               disabled={isLoading || !!activeScanId}
+              className="flex-1"
             />
             <Button
               onClick={handleStartScan}
               disabled={isLoading || !!activeScanId || !scanPath.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all active:scale-95"
             >
-              {isLoading ? "Starting..." : "Scan"}
+              <Play className="h-4 w-4 mr-2" />
+              {isLoading ? "Starting..." : "Start Scan"}
             </Button>
           </div>
           {error && <p className="text-sm text-destructive mt-2">{error}</p>}
@@ -101,65 +127,112 @@ export function Dashboard() {
 
       {/* Summary Stats */}
       {latestScan && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatsCard
-            title="Total Files"
-            value={formatNumber(latestScan.totalFiles)}
-            description={`${formatNumber(latestScan.totalDirectories)} directories`}
-          />
-          <StatsCard
-            title="Total Size"
-            value={formatBytes(latestScan.totalSize)}
-            description={`Scanned in ${formatDuration(latestScan.scanDuration)}`}
-          />
-          <StatsCard
-            title="Duplicate Groups"
-            value={formatNumber(latestScan.duplicateGroups)}
-            description={`${formatNumber(latestScan.duplicateFiles)} duplicate files`}
-            variant={latestScan.duplicateGroups > 0 ? "destructive" : "default"}
-          />
-          <StatsCard
-            title="Wasted Space"
-            value={formatBytes(latestScan.wastedSpace)}
-            description="Can be reclaimed"
-            variant={latestScan.wastedSpace > 0 ? "destructive" : "default"}
-          />
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                Total Files
+              </CardTitle>
+              <Files className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                {formatNumber(latestScan.totalFiles)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 font-medium italic">
+                {formatNumber(latestScan.totalDirectories)} directories
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-purple-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                Total Size
+              </CardTitle>
+              <HardDrive className="h-4 w-4 text-purple-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                {formatBytes(latestScan.totalSize)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 font-medium italic">
+                Scanned in {formatDuration(latestScan.scanDuration)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-orange-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                Duplicate Groups
+              </CardTitle>
+              <Copy className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+                {formatNumber(latestScan.duplicateGroups)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 font-medium italic">
+                {formatNumber(latestScan.duplicateFiles)} duplicate files
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-red-500">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                Wasted Space
+              </CardTitle>
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                {formatBytes(latestScan.wastedSpace)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 font-medium italic">
+                Can be reclaimed
+              </p>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Charts and Recent Scans */}
       <div className="grid md:grid-cols-2 gap-6">
         {fileTypeStats.length > 0 && (
-          <PieChartCard data={fileTypeStats} title="File Types by Size" />
+          <PieChartCard data={fileTypeStats} title="Storage Distribution" />
         )}
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Recent Scans</CardTitle>
+            <CardTitle>Recent Scans</CardTitle>
+            <CardDescription>Latest scan operations</CardDescription>
           </CardHeader>
           <CardContent>
             {scans.length === 0 ? (
-              <p className="text-muted-foreground text-sm py-4 text-center">
-                No scans yet. Start your first scan above!
-              </p>
+              <div className="text-center text-muted-foreground py-8">
+                <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No scans yet. Start your first scan above!</p>
+              </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {scans.slice(0, 5).map((scan) => (
                   <div
                     key={scan.scanId}
-                    className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-transparent hover:border-border transition-colors group"
                   >
                     <div
                       className="flex-1 cursor-pointer"
                       onClick={() => {
                         loadScan(scan.scanId);
-                        navigate(`/folders/${scan.scanId}`);
+                        navigate(`/files/${scan.scanId}`);
                       }}
                     >
-                      <div className="font-medium text-sm">{scan.rootPath}</div>
+                      <div className="text-sm font-medium">{scan.rootPath}</div>
                       <div className="text-xs text-muted-foreground">
-                        {formatNumber(scan.totalFiles)} files •{" "}
-                        {formatBytes(scan.totalSize)} • {scan.scanDate}
+                        {formatNumber(scan.totalFiles)} files &bull;{" "}
+                        {formatBytes(scan.totalSize)} &bull; {scan.scanDate}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -177,7 +250,7 @@ export function Dashboard() {
                         size="sm"
                         onClick={() => handleDeleteScan(scan.scanId)}
                       >
-                        ✕
+                        &times;
                       </Button>
                     </div>
                   </div>
@@ -187,32 +260,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
-}
-
-function StatsCard({
-  title,
-  value,
-  description,
-  variant = "default",
-}: {
-  title: string;
-  value: string;
-  description: string;
-  variant?: "default" | "destructive";
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="text-sm font-medium text-muted-foreground">{title}</div>
-        <div
-          className={`text-2xl font-bold mt-1 ${variant === "destructive" ? "text-destructive" : ""}`}
-        >
-          {value}
-        </div>
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      </CardContent>
-    </Card>
+    </motion.div>
   );
 }
