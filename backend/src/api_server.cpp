@@ -344,7 +344,10 @@ struct ApiServer::Impl
                 result.duplicate_groups = dup_groups.size();
                 result.duplicate_files = total_dup_files;
                 result.wasted_space = total_wasted;
-                result.scan_duration = active->last_progress.elapsed_seconds;
+                result.scan_duration =
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - active->start_time)
+                        .count();
 
                 db.complete_scan(scan_id, result);
 
