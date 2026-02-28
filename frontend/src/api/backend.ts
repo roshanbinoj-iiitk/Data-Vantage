@@ -167,6 +167,37 @@ export async function getDuplicates(
   return apiFetch(`/scans/${scanId}/duplicates?${params}`);
 }
 
+// ---- Delete Operations ----
+
+export interface DeleteResult {
+  deleted: string[];
+  failed: string[];
+  deletedCount: number;
+  failedCount: number;
+  kept?: string;
+}
+
+export async function deleteFiles(
+  scanId: number,
+  paths: string[],
+): Promise<DeleteResult> {
+  return apiFetch(`/scans/${scanId}/files/delete`, {
+    method: "POST",
+    body: JSON.stringify({ paths }),
+  });
+}
+
+export async function deleteDuplicateGroup(
+  scanId: number,
+  hash: string,
+  keepPath: string,
+): Promise<DeleteResult> {
+  return apiFetch(`/scans/${scanId}/duplicates/delete-group`, {
+    method: "POST",
+    body: JSON.stringify({ hash, keepPath }),
+  });
+}
+
 // ---- Statistics ----
 
 export async function getFileTypeStats(

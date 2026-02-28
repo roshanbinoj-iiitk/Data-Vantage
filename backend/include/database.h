@@ -55,11 +55,13 @@ public:
     void insert_files(int64_t scan_id, const std::vector<FileEntry> &files);
     std::vector<FileEntry> get_files(int64_t scan_id, int64_t parent_id = -1, int limit = 100, int offset = 0);
     std::vector<FileEntry> search_files(int64_t scan_id, const std::string &query);
+    void delete_files_by_paths(int64_t scan_id, const std::vector<std::string> &paths);
 
     // Duplicate operations
     void store_duplicates(int64_t scan_id, const std::vector<DuplicateGroup> &groups);
     std::vector<DuplicateGroup> get_duplicates(int64_t scan_id, int limit = 50, int offset = 0);
     uint64_t get_duplicate_count(int64_t scan_id);
+    void delete_duplicate_group(int64_t scan_id, const std::string &hash, const std::string &keep_path);
 
     // Statistics
     std::vector<FileTypeStats> get_file_type_stats(int64_t scan_id);

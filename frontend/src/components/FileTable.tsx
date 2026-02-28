@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowUpDown, FolderOpen } from "lucide-react";
+import { ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
 import { type FileEntry } from "@/api/backend";
 import {
   Table,
@@ -17,6 +17,7 @@ interface FileTableProps {
   files: FileEntry[];
   onFileClick?: (file: FileEntry) => void;
   onDirectoryClick?: (file: FileEntry) => void;
+  onDeleteFile?: (file: FileEntry) => void;
   showPath?: boolean;
 }
 
@@ -27,6 +28,7 @@ export function FileTable({
   files,
   onDirectoryClick,
   onFileClick,
+  onDeleteFile,
   showPath = false,
 }: FileTableProps) {
   const [sortField, setSortField] = useState<SortField>("name");
@@ -137,13 +139,18 @@ export function FileTable({
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
+            {onDeleteFile && <TableHead className="w-12"></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedFiles.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={showPath ? 6 : 5}
+                colSpan={
+                  showPath
+                    ? 6 + (onDeleteFile ? 1 : 0)
+                    : 5 + (onDeleteFile ? 1 : 0)
+                }
                 className="text-center text-muted-foreground py-8"
               >
                 No files found. Start a scan to populate this table.
@@ -199,6 +206,24 @@ export function FileTable({
                     ? new Date(file.modifiedTime * 1000).toLocaleDateString()
                     : "—"}
                 </TableCell>
+                {onDeleteFile && (
+                  <TableCell>
+                    {!file.isDirectory && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteFile(file);
+                        }}
+                        title="Delete file"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             ))
           )}

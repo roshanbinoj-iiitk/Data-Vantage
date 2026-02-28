@@ -11,11 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileTable } from "@/components/FileTable";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
 import {
   getFiles,
   searchFiles,
   getScan,
   getAllScans,
+  deleteFiles,
   type FileEntry,
   type ScanResult,
 } from "@/api/backend";
@@ -36,6 +39,14 @@ export function FolderView() {
   const [isSearching, setIsSearching] = useState(false);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [currentParentId, setCurrentParentId] = useState(0);
+
+  // Delete confirmation state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDesc, setConfirmDesc] = useState("");
+  const [pendingAction, setPendingAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
+  const { toast } = useToast();
 
   // Auto-select latest scan if none specified
   useEffect(() => {
@@ -116,6 +127,48 @@ export function FolderView() {
       setLoading(false);
     }
   };
+
+  const handleDeleteFile = useCallback(
+    (file: FileEntry) => {
+      setConfirmDesc(`Permanently delete this file from disk?\n\n${file.path}`);
+      setPendingAction(() => async () => {
+        const id = parseInt(scanId!);
+        try {
+          const res = await deleteFiles(id, [file.path]);
+          if (res.deletedCount > 0) {
+            toast("success", `Deleted ${file.name}`);
+          }
+          if (res.failedCount > 0) {
+            toast("error", `Failed to delete ${file.name}`);
+          }
+          // Refresh file list
+          if (isSearching && searchQuery.trim()) {
+            const results = await searchFiles(id, searchQuery);
+            setFiles(results);
+          } else {
+            await loadFiles(currentParentId);
+          }
+        } catch (err: unknown) {
+          toast("error", err instanceof Error ? err.message : "Delete failed");
+        }
+      });
+      setConfirmOpen(true);
+    },
+    [scanId, currentParentId, isSearching, searchQuery, loadFiles, toast],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    setConfirmOpen(false);
+    if (pendingAction) {
+      await pendingAction();
+      setPendingAction(null);
+    }
+  }, [pendingAction]);
+
+  const handleCancelConfirm = useCallback(() => {
+    setConfirmOpen(false);
+    setPendingAction(null);
+  }, []);
 
   if (!scanId) {
     return (
@@ -260,11 +313,20 @@ export function FolderView() {
             <FileTable
               files={files}
               onDirectoryClick={handleDirectoryClick}
+              onDeleteFile={handleDeleteFile}
               showPath={isSearching}
             />
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete File"
+        description={confirmDesc}
+        onConfirm={handleConfirm}
+        onCancel={handleCancelConfirm}
+      />
     </motion.div>
   );
 }

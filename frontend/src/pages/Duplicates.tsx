@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Copy, AlertTriangle, ArrowUpDown, Search } from "lucide-react";
 import {
@@ -11,10 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DuplicateGroupCard } from "@/components/DuplicateGroup";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useToast } from "@/components/Toast";
 import {
   getDuplicates,
   getScan,
   getAllScans,
+  deleteFiles,
+  deleteDuplicateGroup,
   type DuplicateGroup,
   type ScanResult,
 } from "@/api/backend";
@@ -73,6 +77,15 @@ export function Duplicates() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterText, setFilterText] = useState("");
 
+  // Delete confirmation state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [confirmDesc, setConfirmDesc] = useState("");
+  const [pendingAction, setPendingAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
+  const { toast } = useToast();
+
   // Auto-select latest scan if none specified
   useEffect(() => {
     if (!scanId) {
@@ -103,6 +116,89 @@ export function Duplicates() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [scanId, offset]);
+
+  const reloadDuplicates = useCallback(() => {
+    if (!scanId) return;
+    const id = parseInt(scanId);
+    getDuplicates(id, limit, offset)
+      .then((dupData) => {
+        setGroups(dupData.groups);
+        setTotal(dupData.total);
+        setExclusions(dupData.exclusions ?? []);
+      })
+      .catch(console.error);
+  }, [scanId, limit, offset]);
+
+  const handleDeleteFile = useCallback(
+    (path: string) => {
+      setConfirmTitle("Delete File");
+      setConfirmDesc(`Permanently delete this file from disk?\n\n${path}`);
+      setPendingAction(() => async () => {
+        const id = parseInt(scanId!);
+        try {
+          const res = await deleteFiles(id, [path]);
+          if (res.deletedCount > 0) {
+            toast("success", `Deleted ${path.split("/").pop()}`);
+          }
+          if (res.failedCount > 0) {
+            toast("error", `Failed to delete ${res.failed.join(", ")}`);
+          }
+          reloadDuplicates();
+        } catch (err: unknown) {
+          toast("error", err instanceof Error ? err.message : "Delete failed");
+        }
+      });
+      setConfirmOpen(true);
+    },
+    [scanId, reloadDuplicates, toast],
+  );
+
+  const handleDeleteGroup = useCallback(
+    (hash: string, keepPath: string) => {
+      const group = groups.find((g) => g.hash === hash);
+      const deleteCount = group ? group.fileCount - 1 : 0;
+      setConfirmTitle("Delete Duplicate Group");
+      setConfirmDesc(
+        `Keep "${keepPath.split("/").pop()}" and permanently delete ${deleteCount} other duplicate${deleteCount !== 1 ? "s" : ""} from disk?`,
+      );
+      setPendingAction(() => async () => {
+        const id = parseInt(scanId!);
+        try {
+          const res = await deleteDuplicateGroup(id, hash, keepPath);
+          if (res.deletedCount > 0) {
+            toast(
+              "success",
+              `Deleted ${res.deletedCount} duplicate file${res.deletedCount !== 1 ? "s" : ""}`,
+            );
+          }
+          if (res.failedCount > 0) {
+            toast(
+              "error",
+              `Failed to delete ${res.failedCount} file${res.failedCount !== 1 ? "s" : ""}`,
+            );
+          }
+          reloadDuplicates();
+        } catch (err: unknown) {
+          toast("error", err instanceof Error ? err.message : "Delete failed");
+        }
+      });
+      setConfirmOpen(true);
+    },
+    [scanId, groups, reloadDuplicates, toast],
+  );
+
+  const handleConfirm = useCallback(async () => {
+    setConfirmOpen(false);
+    if (pendingAction) {
+      await pendingAction();
+      setPendingAction(null);
+    }
+  }, [pendingAction]);
+
+  const handleCancelConfirm = useCallback(() => {
+    setConfirmOpen(false);
+    setPendingAction(null);
+  }, []);
 
   // Apply filter + sort
   const displayGroups = useMemo(() => {
@@ -332,6 +428,8 @@ export function Duplicates() {
               key={group.hash}
               group={group}
               index={offset + idx}
+              onDeleteFile={handleDeleteFile}
+              onDeleteGroup={handleDeleteGroup}
             />
           ))}
         </div>
@@ -359,6 +457,14 @@ export function Duplicates() {
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={confirmTitle}
+        description={confirmDesc}
+        onConfirm={handleConfirm}
+        onCancel={handleCancelConfirm}
+      />
     </motion.div>
   );
 }

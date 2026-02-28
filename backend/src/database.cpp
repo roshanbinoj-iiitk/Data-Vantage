@@ -456,6 +456,120 @@ std::vector<FileTypeStats> Database::get_file_type_stats(int64_t scan_id)
     return results;
 }
 
+void Database::delete_files_by_paths(int64_t scan_id, const std::vector<std::string> &paths)
+{
+    m_impl->exec("BEGIN TRANSACTION;");
+
+    for (const auto &path : paths)
+    {
+        // Remove from duplicate_files first
+        sqlite3_stmt *stmt;
+        const char *sql = "DELETE FROM duplicate_files WHERE path = ? AND group_id IN (SELECT id FROM duplicate_groups WHERE scan_id = ?);";
+        sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr);
+        sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, scan_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        // Remove from files table
+        const char *sql2 = "DELETE FROM files WHERE scan_id = ? AND path = ?;";
+        sqlite3_prepare_v2(m_impl->db, sql2, -1, &stmt, nullptr);
+        sqlite3_bind_int64(stmt, 1, scan_id);
+        sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    // Clean up empty duplicate groups (groups with 0 or 1 file remaining)
+    {
+        sqlite3_stmt *stmt;
+        const char *sql = "DELETE FROM duplicate_files WHERE group_id IN "
+                          "(SELECT dg.id FROM duplicate_groups dg "
+                          "LEFT JOIN duplicate_files df ON df.group_id = dg.id "
+                          "WHERE dg.scan_id = ? "
+                          "GROUP BY dg.id HAVING COUNT(df.id) <= 1);";
+        sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr);
+        sqlite3_bind_int64(stmt, 1, scan_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+
+        const char *sql2 = "DELETE FROM duplicate_groups WHERE scan_id = ? AND id NOT IN "
+                           "(SELECT DISTINCT group_id FROM duplicate_files);";
+        sqlite3_prepare_v2(m_impl->db, sql2, -1, &stmt, nullptr);
+        sqlite3_bind_int64(stmt, 1, scan_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    m_impl->exec("COMMIT;");
+}
+
+void Database::delete_duplicate_group(int64_t scan_id, const std::string &hash, const std::string &keep_path)
+{
+    m_impl->exec("BEGIN TRANSACTION;");
+
+    // Get group id
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT id FROM duplicate_groups WHERE scan_id = ? AND hash = ?;";
+    sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr);
+    sqlite3_bind_int64(stmt, 1, scan_id);
+    sqlite3_bind_text(stmt, 2, hash.c_str(), -1, SQLITE_STATIC);
+
+    int64_t group_id = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        group_id = sqlite3_column_int64(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+
+    if (group_id < 0)
+    {
+        m_impl->exec("COMMIT;");
+        return;
+    }
+
+    // Get paths of files to delete (all except keep_path)
+    const char *sql2 = "SELECT path FROM duplicate_files WHERE group_id = ? AND path != ?;";
+    sqlite3_prepare_v2(m_impl->db, sql2, -1, &stmt, nullptr);
+    sqlite3_bind_int64(stmt, 1, group_id);
+    sqlite3_bind_text(stmt, 2, keep_path.c_str(), -1, SQLITE_STATIC);
+
+    std::vector<std::string> paths_to_delete;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const char *p = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        if (p)
+            paths_to_delete.push_back(p);
+    }
+    sqlite3_finalize(stmt);
+
+    // Remove deleted files from files table
+    for (const auto &path : paths_to_delete)
+    {
+        const char *sql3 = "DELETE FROM files WHERE scan_id = ? AND path = ?;";
+        sqlite3_prepare_v2(m_impl->db, sql3, -1, &stmt, nullptr);
+        sqlite3_bind_int64(stmt, 1, scan_id);
+        sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    // Remove the entire duplicate group (since we keep only one, it's no longer a duplicate)
+    const char *sql4 = "DELETE FROM duplicate_files WHERE group_id = ?;";
+    sqlite3_prepare_v2(m_impl->db, sql4, -1, &stmt, nullptr);
+    sqlite3_bind_int64(stmt, 1, group_id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    const char *sql5 = "DELETE FROM duplicate_groups WHERE id = ?;";
+    sqlite3_prepare_v2(m_impl->db, sql5, -1, &stmt, nullptr);
+    sqlite3_bind_int64(stmt, 1, group_id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    m_impl->exec("COMMIT;");
+}
+
 uint64_t Database::get_total_size(int64_t scan_id)
 {
     sqlite3_stmt *stmt;

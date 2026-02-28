@@ -730,6 +730,199 @@ struct ApiServer::Impl
                                  ",\"groups\":" + arr + "}";
             res.set_content(result, "application/json"); });
 
+        // ---- DELETE FILE ENDPOINTS ----
+
+        // Delete files from disk and database
+        server.Post(R"(/api/scans/(\d+)/files/delete)", [this](const httplib::Request &req, httplib::Response &res)
+                    {
+            int64_t scan_id = std::stoll(req.matches[1]);
+
+            auto paths = json::extract_string_array(req.body, "paths");
+            if (paths.empty()) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing or empty 'paths' array\"}", "application/json");
+                return;
+            }
+
+            // Get scan to validate root path for path-traversal protection
+            auto scan = db.get_scan(scan_id);
+            if (scan.scan_id <= 0) {
+                res.status = 404;
+                res.set_content("{\"error\":\"Scan not found\"}", "application/json");
+                return;
+            }
+
+            namespace fs = std::filesystem;
+            std::string root_canonical;
+            try {
+                root_canonical = fs::canonical(scan.root_path).string();
+            } catch (...) {
+                root_canonical = scan.root_path;
+            }
+
+            std::vector<std::string> deleted;
+            std::vector<std::string> failed;
+
+            for (const auto &path : paths) {
+                // Path traversal protection: resolve canonical and check prefix
+                std::string canonical_path;
+                try {
+                    if (fs::exists(path)) {
+                        canonical_path = fs::canonical(path).string();
+                    } else {
+                        // File already gone on disk; still remove from DB
+                        canonical_path = path;
+                    }
+                } catch (...) {
+                    canonical_path = path;
+                }
+
+                // Block paths outside the scan root
+                if (canonical_path.find(root_canonical) != 0) {
+                    failed.push_back(path);
+                    continue;
+                }
+
+                // Delete from disk (idempotent: ignore if already gone)
+                std::error_code ec;
+                if (fs::exists(path)) {
+                    fs::remove(path, ec);
+                    if (ec) {
+                        failed.push_back(path);
+                        continue;
+                    }
+                }
+
+                deleted.push_back(path);
+            }
+
+            // Remove successfully deleted files from DB
+            if (!deleted.empty()) {
+                db.delete_files_by_paths(scan_id, deleted);
+            }
+
+            std::string del_arr = "[";
+            for (size_t i = 0; i < deleted.size(); i++) {
+                if (i > 0) del_arr += ",";
+                del_arr += "\"" + json::escape(deleted[i]) + "\"";
+            }
+            del_arr += "]";
+
+            std::string fail_arr = "[";
+            for (size_t i = 0; i < failed.size(); i++) {
+                if (i > 0) fail_arr += ",";
+                fail_arr += "\"" + json::escape(failed[i]) + "\"";
+            }
+            fail_arr += "]";
+
+            res.set_content("{\"deleted\":" + del_arr +
+                            ",\"failed\":" + fail_arr +
+                            ",\"deletedCount\":" + std::to_string(deleted.size()) +
+                            ",\"failedCount\":" + std::to_string(failed.size()) + "}", "application/json"); });
+
+        // Delete a duplicate group (keep one file, delete the rest)
+        server.Post(R"(/api/scans/(\d+)/duplicates/delete-group)", [this](const httplib::Request &req, httplib::Response &res)
+                    {
+            int64_t scan_id = std::stoll(req.matches[1]);
+
+            std::string hash = json::extract_string(req.body, "hash");
+            std::string keep_path = json::extract_string(req.body, "keepPath");
+
+            if (hash.empty()) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing 'hash' in request body\"}", "application/json");
+                return;
+            }
+            if (keep_path.empty()) {
+                res.status = 400;
+                res.set_content("{\"error\":\"Missing 'keepPath' in request body\"}", "application/json");
+                return;
+            }
+
+            // Get scan for path-traversal protection
+            auto scan = db.get_scan(scan_id);
+            if (scan.scan_id <= 0) {
+                res.status = 404;
+                res.set_content("{\"error\":\"Scan not found\"}", "application/json");
+                return;
+            }
+
+            namespace fs = std::filesystem;
+            std::string root_canonical;
+            try {
+                root_canonical = fs::canonical(scan.root_path).string();
+            } catch (...) {
+                root_canonical = scan.root_path;
+            }
+
+            // Get all files in the group to delete from disk (except keep_path)
+            auto groups = db.get_duplicates(scan_id, 10000, 0);
+            std::vector<std::string> to_delete;
+            for (const auto &g : groups) {
+                if (g.hash == hash) {
+                    for (const auto &f : g.files) {
+                        if (f.path != keep_path) {
+                            to_delete.push_back(f.path);
+                        }
+                    }
+                    break;
+                }
+            }
+
+            std::vector<std::string> deleted;
+            std::vector<std::string> failed;
+
+            for (const auto &path : to_delete) {
+                std::string canonical_path;
+                try {
+                    if (fs::exists(path)) {
+                        canonical_path = fs::canonical(path).string();
+                    } else {
+                        canonical_path = path;
+                    }
+                } catch (...) {
+                    canonical_path = path;
+                }
+
+                if (canonical_path.find(root_canonical) != 0) {
+                    failed.push_back(path);
+                    continue;
+                }
+
+                std::error_code ec;
+                if (fs::exists(path)) {
+                    fs::remove(path, ec);
+                    if (ec) {
+                        failed.push_back(path);
+                        continue;
+                    }
+                }
+                deleted.push_back(path);
+            }
+
+            // Update DB: remove the group
+            db.delete_duplicate_group(scan_id, hash, keep_path);
+
+            std::string del_arr = "[";
+            for (size_t i = 0; i < deleted.size(); i++) {
+                if (i > 0) del_arr += ",";
+                del_arr += "\"" + json::escape(deleted[i]) + "\"";
+            }
+            del_arr += "]";
+
+            std::string fail_arr = "[";
+            for (size_t i = 0; i < failed.size(); i++) {
+                if (i > 0) fail_arr += ",";
+                fail_arr += "\"" + json::escape(failed[i]) + "\"";
+            }
+            fail_arr += "]";
+
+            res.set_content("{\"deleted\":" + del_arr +
+                            ",\"failed\":" + fail_arr +
+                            ",\"deletedCount\":" + std::to_string(deleted.size()) +
+                            ",\"failedCount\":" + std::to_string(failed.size()) +
+                            ",\"kept\":\"" + json::escape(keep_path) + "\"}", "application/json"); });
+
         // ---- STATISTICS ENDPOINTS ----
 
         // Get file type statistics
