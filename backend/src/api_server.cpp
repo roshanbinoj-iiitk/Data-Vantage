@@ -16,6 +16,8 @@
 #include <chrono>
 #include <atomic>
 #include <unordered_map>
+#include <fstream>
+#include <fnmatch.h>
 
 // ============================================================================
 // JSON helpers (minimal, no external dependency)
@@ -163,7 +165,151 @@ namespace json
         return json_str.substr(pos + 1, end - pos - 1);
     }
 
+    // Parse a JSON array of strings: {"key":["a","b"]}
+    std::vector<std::string> extract_string_array(const std::string &json_str, const std::string &key)
+    {
+        std::vector<std::string> result;
+        std::string search = "\"" + key + "\"";
+        auto pos = json_str.find(search);
+        if (pos == std::string::npos)
+            return result;
+        pos = json_str.find('[', pos);
+        if (pos == std::string::npos)
+            return result;
+        auto end = json_str.find(']', pos);
+        if (end == std::string::npos)
+            return result;
+        std::string arr = json_str.substr(pos + 1, end - pos - 1);
+        size_t i = 0;
+        while (i < arr.size())
+        {
+            auto start = arr.find('"', i);
+            if (start == std::string::npos)
+                break;
+            auto stop = arr.find('"', start + 1);
+            if (stop == std::string::npos)
+                break;
+            result.push_back(arr.substr(start + 1, stop - start - 1));
+            i = stop + 1;
+        }
+        return result;
+    }
+
 } // namespace json
+
+// ============================================================================
+// File exclusion helpers
+// ============================================================================
+
+static const std::vector<std::string> DEFAULT_EXCLUSIONS = {
+    "*.dll", "*.exe", "*.so", "*.bin", "*.class", "*.pyc", "*.o", "*.bk2"};
+
+static std::string str_tolower(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c)
+                   { return std::tolower(c); });
+    return s;
+}
+
+static bool matches_exclusion(const std::string &rel_path, const std::string &filename,
+                              const std::string &pattern)
+{
+    std::string pat = str_tolower(pattern);
+    std::string rel = str_tolower(rel_path);
+    std::string name = str_tolower(filename);
+
+    // Exact filename match (no wildcards, no slashes)
+    if (pat.find('*') == std::string::npos && pat.find('/') == std::string::npos)
+        return name == pat;
+
+    // *.ext — simple extension match
+    if (pat.size() >= 2 && pat[0] == '*' && pat[1] == '.' &&
+        pat.find('/', 0) == std::string::npos && pat.find('*', 1) == std::string::npos)
+    {
+        std::string ext = pat.substr(1); // e.g. ".dll"
+        return name.size() >= ext.size() &&
+               name.compare(name.size() - ext.size(), ext.size(), ext) == 0;
+    }
+
+    // **/*.ext or **/pattern — match sub-pattern against filename or path
+    if (pat.size() > 3 && pat.substr(0, 3) == "**/")
+    {
+        std::string sub = pat.substr(3);
+        // **/dir/** — directory anywhere in path
+        if (sub.size() > 3 && sub.substr(sub.size() - 3) == "/**")
+        {
+            std::string dir = sub.substr(0, sub.size() - 3);
+            return rel.find("/" + dir + "/") != std::string::npos ||
+                   rel.substr(0, dir.size() + 1) == dir + "/";
+        }
+        // **/*.ext or **/name — match against filename
+        return fnmatch(sub.c_str(), name.c_str(), FNM_CASEFOLD) == 0;
+    }
+
+    // dir/** — prefix match on relative path
+    if (pat.size() > 3 && pat.substr(pat.size() - 3) == "/**")
+    {
+        std::string prefix = pat.substr(0, pat.size() - 3);
+        return rel.size() > prefix.size() &&
+               rel.substr(0, prefix.size()) == prefix &&
+               rel[prefix.size()] == '/';
+    }
+
+    // Fallback: fnmatch against filename and relative path
+    return fnmatch(pat.c_str(), name.c_str(), FNM_CASEFOLD) == 0 ||
+           fnmatch(pat.c_str(), rel.c_str(), FNM_CASEFOLD | FNM_PATHNAME) == 0;
+}
+
+static bool is_binary_file(const std::string &filepath)
+{
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file)
+        return false;
+    char buf[8192];
+    file.read(buf, sizeof(buf));
+    auto bytes_read = file.gcount();
+    if (bytes_read == 0)
+        return false;
+    int non_text = 0;
+    for (std::streamsize i = 0; i < bytes_read; i++)
+    {
+        unsigned char c = static_cast<unsigned char>(buf[i]);
+        if (c == 0)
+            return true; // null byte → binary
+        if (c < 7 || (c > 14 && c < 32 && c != 27))
+            non_text++;
+    }
+    return static_cast<double>(non_text) / bytes_read > 0.3;
+}
+
+static bool should_exclude_file(const std::string &filepath, const std::string &root_path,
+                                const std::vector<std::string> &exclusions)
+{
+    namespace fs = std::filesystem;
+    std::string rel = filepath;
+    if (filepath.size() > root_path.size() &&
+        filepath.substr(0, root_path.size()) == root_path)
+    {
+        rel = filepath.substr(root_path.size());
+        if (!rel.empty() && rel[0] == '/')
+            rel = rel.substr(1);
+    }
+    std::string fname = fs::path(filepath).filename().string();
+
+    for (const auto &pat : exclusions)
+    {
+        if (matches_exclusion(rel, fname, pat))
+            return true;
+    }
+
+    // Binary content sniffing when extension is missing
+    std::string ext = fs::path(filepath).extension().string();
+    if (ext.empty() && is_binary_file(filepath))
+        return true;
+
+    return false;
+}
 
 // ============================================================================
 // Active scan state
@@ -182,6 +328,7 @@ struct ActiveScan
     std::atomic<uint64_t> hash_files_total{0};
     std::atomic<uint64_t> hash_files_done{0};
     std::chrono::steady_clock::time_point hash_start_time;
+    std::vector<std::string> exclusions;
 };
 
 // ============================================================================
@@ -196,6 +343,7 @@ struct ApiServer::Impl
     Database db;
     std::mutex scan_mutex;
     std::map<int64_t, std::shared_ptr<ActiveScan>> active_scans;
+    std::map<int64_t, std::vector<std::string>> scan_exclusions; // persist across scan lifetime
 
     Impl(const std::string &h, int p) : host(h), port(p), db("data_vantage.db") {}
 
@@ -248,9 +396,16 @@ struct ApiServer::Impl
             active->status = "scanning";
             active->start_time = std::chrono::steady_clock::now();
 
+            // Parse exclusion list (use default if not provided)
+            auto exclusions = json::extract_string_array(req.body, "exclusions");
+            if (exclusions.empty())
+                exclusions = DEFAULT_EXCLUSIONS;
+            active->exclusions = exclusions;
+
             {
                 std::lock_guard<std::mutex> lock(scan_mutex);
                 active_scans[scan_id] = active;
+                scan_exclusions[scan_id] = exclusions;
             }
 
             // Start scan in background thread
@@ -265,9 +420,15 @@ struct ApiServer::Impl
                 auto files = active->scanner->get_files();
 
                 // Hash files and find duplicates
+                // Filter out excluded files before duplicate detection
+                std::string root_normalized = path;
+                if (!root_normalized.empty() && root_normalized.back() != '/')
+                    root_normalized += '/';
+
                 std::unordered_map<std::string, std::vector<size_t>> size_groups;
                 for (size_t i = 0; i < files.size(); i++) {
-                    if (!files[i].is_directory && files[i].size > 0) {
+                    if (!files[i].is_directory && files[i].size > 0 &&
+                        !should_exclude_file(files[i].path, root_normalized, active->exclusions)) {
                         size_groups[std::to_string(files[i].size)].push_back(i);
                     }
                 }
@@ -544,7 +705,23 @@ struct ApiServer::Impl
             }
             arr += "]";
 
-            std::string result = "{\"total\":" + std::to_string(total) + ",\"groups\":" + arr + "}";
+            // Build exclusions array for response
+            std::string excl_arr = "[";
+            {
+                std::lock_guard<std::mutex> lock(scan_mutex);
+                auto eit = scan_exclusions.find(scan_id);
+                if (eit != scan_exclusions.end()) {
+                    for (size_t i = 0; i < eit->second.size(); i++) {
+                        if (i > 0) excl_arr += ",";
+                        excl_arr += "\"" + json::escape(eit->second[i]) + "\"";
+                    }
+                }
+            }
+            excl_arr += "]";
+
+            std::string result = "{\"total\":" + std::to_string(total) +
+                                 ",\"exclusions\":" + excl_arr +
+                                 ",\"groups\":" + arr + "}";
             res.set_content(result, "application/json"); });
 
         // ---- STATISTICS ENDPOINTS ----

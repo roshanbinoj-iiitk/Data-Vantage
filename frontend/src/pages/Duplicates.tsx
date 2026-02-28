@@ -62,6 +62,7 @@ export function Duplicates() {
   const navigate = useNavigate();
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [total, setTotal] = useState(0);
+  const [exclusions, setExclusions] = useState<string[]>([]);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
@@ -96,6 +97,7 @@ export function Duplicates() {
       .then(([dupData, scanData]) => {
         setGroups(dupData.groups);
         setTotal(dupData.total);
+        setExclusions(dupData.exclusions ?? []);
         setScan(scanData);
       })
       .catch(console.error)
@@ -192,6 +194,11 @@ export function Duplicates() {
             ? `Scan: ${scan.rootPath}`
             : "Identify and manage duplicate files to free up storage"}
         </p>
+        {exclusions.length > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Excluded patterns: {exclusions.join(", ")}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

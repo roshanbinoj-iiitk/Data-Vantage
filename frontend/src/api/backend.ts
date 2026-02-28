@@ -54,6 +54,7 @@ export interface DuplicateGroup {
 
 export interface DuplicateResponse {
   total: number;
+  exclusions?: string[];
   groups: DuplicateGroup[];
 }
 
@@ -95,10 +96,15 @@ export async function checkHealth(): Promise<{
 
 export async function startScan(
   path: string,
+  exclusions?: string[],
 ): Promise<{ scanId: number; status: string }> {
+  const body: Record<string, unknown> = { path };
+  if (exclusions && exclusions.length > 0) {
+    body.exclusions = exclusions;
+  }
   return apiFetch("/scans", {
     method: "POST",
-    body: JSON.stringify({ path }),
+    body: JSON.stringify(body),
   });
 }
 
