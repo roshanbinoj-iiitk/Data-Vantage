@@ -202,7 +202,9 @@ namespace json
 // ============================================================================
 
 static const std::vector<std::string> DEFAULT_EXCLUSIONS = {
-    "*.dll", "*.exe", "*.so", "*.bin", "*.class", "*.pyc", "*.o", "*.bk2"};
+    "*.dll", "*.exe", "*.so", "*.bin", "*.class", "*.pyc", "*.o", "*.bk2",
+    "node_modules/**", "build/**", ".git/**", "dist/**", "__pycache__/**",
+    ".cache/**", "vendor/**", ".npm/**", "bower_components/**"};
 
 static std::string str_tolower(std::string s)
 {
@@ -247,13 +249,17 @@ static bool matches_exclusion(const std::string &rel_path, const std::string &fi
         return fnmatch(sub.c_str(), name.c_str(), FNM_CASEFOLD) == 0;
     }
 
-    // dir/** — prefix match on relative path
+    // dir/** — match directory at root or anywhere in path
     if (pat.size() > 3 && pat.substr(pat.size() - 3) == "/**")
     {
         std::string prefix = pat.substr(0, pat.size() - 3);
-        return rel.size() > prefix.size() &&
-               rel.substr(0, prefix.size()) == prefix &&
-               rel[prefix.size()] == '/';
+        // At root of relative path
+        if (rel.size() > prefix.size() &&
+            rel.substr(0, prefix.size()) == prefix &&
+            rel[prefix.size()] == '/')
+            return true;
+        // Anywhere in path (e.g. sub/node_modules/...)
+        return rel.find("/" + prefix + "/") != std::string::npos;
     }
 
     // Fallback: fnmatch against filename and relative path
