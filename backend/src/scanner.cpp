@@ -143,10 +143,11 @@ void Scanner::scan_recursive(const std::string &path, int64_t parent_id)
             }
             else if (entry.is_regular_file(ec))
             {
-                // Use stat to detect hard links — only count a file once
-                // per unique (device, inode) pair.
+                // Use lstat to detect hard links — only count a file once
+                // per unique (device, inode) pair.  lstat avoids following
+                // symlinks (they are already skipped above).
                 struct stat st;
-                if (::stat(fe.path.c_str(), &st) != 0)
+                if (::lstat(fe.path.c_str(), &st) != 0)
                 {
                     // Cannot stat file — permission error or race condition
                     m_skipped_files++;
@@ -166,7 +167,13 @@ void Scanner::scan_recursive(const std::string &path, int64_t parent_id)
                 }
 
                 fe.extension = entry.path().extension().string();
-                fe.size = static_cast<uint64_t>(st.st_size); // accurate size from stat
+#ifdef __linux__
+                // Actual disk consumption: st_blocks is in 512-byte units (POSIX).
+                fe.size = static_cast<uint64_t>(st.st_blocks) * 512;
+#else
+                // Fallback: apparent file size on platforms without st_blocks.
+                fe.size = static_cast<uint64_t>(st.st_size);
+#endif
                 auto ftime = entry.last_write_time(ec);
                 if (!ec)
                 {

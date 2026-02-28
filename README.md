@@ -118,6 +118,14 @@ The frontend dev server proxies `/api` requests to the backend at `localhost:808
 4. Results are stored in SQLite and returned via REST API
 5. Frontend displays results with interactive tables, charts, and navigation
 
+### Size on Disk
+
+All reported sizes (`sizeOnDisk` in the API, `totalSize` in scan results) reflect
+**actual disk consumption** computed as `st_blocks * 512` (POSIX 512-byte block
+units) via `lstat`. This may differ from the apparent file size for sparse files,
+compressed filesystems, or files smaller than one allocation block. On non-Linux
+platforms the scanner falls back to the apparent file size.
+
 ## Performance
 
 - Uses `std::filesystem` with `skip_permission_denied` for robust traversal

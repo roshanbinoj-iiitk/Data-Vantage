@@ -106,6 +106,13 @@ void Database::initialize()
     m_impl->exec("CREATE INDEX IF NOT EXISTS idx_files_parent ON files(parent_id);");
     m_impl->exec("CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash);");
     m_impl->exec("CREATE INDEX IF NOT EXISTS idx_dup_groups_scan ON duplicate_groups(scan_id);");
+
+    // Migration: the 'size' column now stores actual disk consumption
+    // (st_blocks * 512) rather than apparent file size.  No schema change
+    // is required because the column type (INTEGER) is unchanged; only the
+    // semantic meaning of stored values differs.  Old rows from previous
+    // scans will still contain apparent-size values — re-scan to get
+    // disk-consumption values.
 }
 
 int64_t Database::create_scan(const std::string &root_path)

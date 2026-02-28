@@ -14,7 +14,7 @@ struct FileEntry
     std::string path;
     std::string name;
     std::string extension;
-    uint64_t size;
+    uint64_t size; // disk consumption (st_blocks * 512) on Linux, apparent size elsewhere
     uint64_t modified_time;
     bool is_directory;
     std::string hash;

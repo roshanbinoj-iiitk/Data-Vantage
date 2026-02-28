@@ -84,7 +84,7 @@ namespace json
                str("path", f.path) + "," +
                str("name", f.name) + "," +
                str("extension", f.extension) + "," +
-               num("size", f.size) + "," +
+               num("sizeOnDisk", f.size) + "," +
                num("modifiedTime", f.modified_time) + "," +
                boolean("isDirectory", f.is_directory) + "," +
                str("hash", f.hash) + "," +

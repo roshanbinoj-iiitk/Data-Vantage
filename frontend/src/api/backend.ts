@@ -10,7 +10,7 @@ export interface FileEntry {
   path: string;
   name: string;
   extension: string;
-  size: number;
+  sizeOnDisk: number;
   modifiedTime: number;
   isDirectory: boolean;
   hash: string;

@@ -60,8 +60,8 @@ export function FileTable({
 
     switch (sortField) {
       case "size":
-        aValue = a.size;
-        bValue = b.size;
+        aValue = a.sizeOnDisk;
+        bValue = b.sizeOnDisk;
         break;
       case "modifiedTime":
         aValue = a.modifiedTime;
@@ -192,7 +192,7 @@ export function FileTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {file.isDirectory ? "—" : formatBytes(file.size)}
+                  {file.isDirectory ? "—" : formatBytes(file.sizeOnDisk)}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {file.modifiedTime > 0
