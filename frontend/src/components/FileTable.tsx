@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFilters } from "@/lib/filters";
 import { ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
 import { type FileEntry } from "@/api/backend";
 import {
@@ -31,15 +32,15 @@ export function FileTable({
   onDeleteFile,
   showPath = false,
 }: FileTableProps) {
-  const [sortField, setSortField] = useState<SortField>("name");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const { fileTable, setFileTable } = useFilters();
+  const sortField = fileTable.sortField as SortField;
+  const sortDirection = fileTable.sortDirection as SortDirection;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      setFileTable({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
     } else {
-      setSortField(field);
-      setSortDirection("asc");
+      setFileTable({ sortField: field, sortDirection: "asc" });
     }
   };
 
@@ -198,9 +199,7 @@ export function FileTable({
                     <Badge variant="outline">{file.extension || "file"}</Badge>
                   )}
                 </TableCell>
-                <TableCell>
-                  {formatBytes(file.sizeOnDisk)}
-                </TableCell>
+                <TableCell>{formatBytes(file.sizeOnDisk)}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {file.modifiedTime > 0
                     ? new Date(file.modifiedTime * 1000).toLocaleDateString()

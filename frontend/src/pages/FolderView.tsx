@@ -22,6 +22,7 @@ import {
   type FileEntry,
   type ScanResult,
 } from "@/api/backend";
+import { useFilters } from "@/lib/filters";
 import { motion } from "framer-motion";
 
 interface BreadcrumbItem {
@@ -35,8 +36,8 @@ export function FolderView() {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
+  const { globalSearch, isSearching, setGlobalSearch, setIsSearching } =
+    useFilters();
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
   const [currentParentId, setCurrentParentId] = useState(0);
 
@@ -90,7 +91,7 @@ export function FolderView() {
     setCurrentParentId(file.id);
     setBreadcrumbs((prev) => [...prev, { id: file.id, name: file.name }]);
     loadFiles(file.id);
-    setSearchQuery("");
+    setGlobalSearch("");
     setIsSearching(false);
   };
 
@@ -105,12 +106,12 @@ export function FolderView() {
       setBreadcrumbs(breadcrumbs.slice(0, index + 1));
       loadFiles(crumb.id);
     }
-    setSearchQuery("");
+    setGlobalSearch("");
     setIsSearching(false);
   };
 
   const handleSearch = async () => {
-    if (!scanId || !searchQuery.trim()) {
+    if (!scanId || !globalSearch.trim()) {
       setIsSearching(false);
       loadFiles(currentParentId);
       return;
@@ -119,7 +120,7 @@ export function FolderView() {
     setLoading(true);
     setIsSearching(true);
     try {
-      const results = await searchFiles(parseInt(scanId), searchQuery);
+      const results = await searchFiles(parseInt(scanId), globalSearch);
       setFiles(results);
     } catch (err) {
       console.error("Search failed:", err);
@@ -142,8 +143,8 @@ export function FolderView() {
             toast("error", `Failed to delete ${file.name}`);
           }
           // Refresh file list
-          if (isSearching && searchQuery.trim()) {
-            const results = await searchFiles(id, searchQuery);
+          if (isSearching && globalSearch.trim()) {
+            const results = await searchFiles(id, globalSearch);
             setFiles(results);
           } else {
             await loadFiles(currentParentId);
@@ -154,7 +155,7 @@ export function FolderView() {
       });
       setConfirmOpen(true);
     },
-    [scanId, currentParentId, isSearching, searchQuery, loadFiles, toast],
+    [scanId, currentParentId, isSearching, globalSearch, loadFiles, toast],
   );
 
   const handleConfirm = useCallback(async () => {
@@ -240,8 +241,8 @@ export function FolderView() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search files..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="pl-9"
               />
@@ -253,7 +254,7 @@ export function FolderView() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  setSearchQuery("");
+                  setGlobalSearch("");
                   setIsSearching(false);
                   loadFiles(currentParentId);
                 }}

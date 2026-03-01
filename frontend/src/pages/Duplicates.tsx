@@ -22,6 +22,7 @@ import {
   type DuplicateGroup,
   type ScanResult,
 } from "@/api/backend";
+import { useFilters } from "@/lib/filters";
 import { formatBytes, formatNumber } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -72,10 +73,11 @@ export function Duplicates() {
   const [offset, setOffset] = useState(0);
   const limit = 20;
 
-  // Sort & filter state
-  const [sortField, setSortField] = useState<SortField>("wasted");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [filterText, setFilterText] = useState("");
+  // Sort & filter state (global)
+  const { duplicates, setDuplicates } = useFilters();
+  const sortField = duplicates.sortField as SortField;
+  const sortDir = duplicates.sortDir as SortDir;
+  const filterText = duplicates.filterText;
 
   // Delete confirmation state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -222,10 +224,12 @@ export function Duplicates() {
 
   function toggleSort(field: SortField) {
     if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      setDuplicates({ sortDir: sortDir === "asc" ? "desc" : "asc" });
     } else {
-      setSortField(field);
-      setSortDir(field === "name" || field === "path" ? "asc" : "desc");
+      setDuplicates({
+        sortField: field,
+        sortDir: field === "name" || field === "path" ? "asc" : "desc",
+      });
     }
   }
 
@@ -361,7 +365,9 @@ export function Duplicates() {
                 <Input
                   placeholder="Filter by name or path…"
                   value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
+                  onChange={(e) =>
+                    setDuplicates({ filterText: e.target.value })
+                  }
                   className="pl-9 h-9"
                 />
               </div>
