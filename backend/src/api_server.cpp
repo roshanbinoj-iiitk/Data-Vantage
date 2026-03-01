@@ -224,7 +224,10 @@ namespace json
         {
             return std::stoll(json_str.substr(start, i - start));
         }
-        catch (...) { return 0; }
+        catch (...)
+        {
+            return 0;
+        }
     }
 
 } // namespace json

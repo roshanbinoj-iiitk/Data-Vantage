@@ -143,7 +143,9 @@ export function Dashboard() {
             </Button>
           </div>
           <div className="mt-3">
-            <label className="text-sm font-medium mr-2">Exclude files smaller than:</label>
+            <label className="text-sm font-medium mr-2">
+              Exclude files smaller than:
+            </label>
             <input
               type="range"
               min={0}
