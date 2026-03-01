@@ -18,7 +18,7 @@ Scanner::~Scanner()
     stop();
 }
 
-void Scanner::scan(const std::string &root_path, ProgressCallback callback)
+void Scanner::scan(const std::string &root_path, ProgressCallback callback, uint64_t min_size)
 {
     if (m_scanning.load())
         return;
@@ -34,6 +34,7 @@ void Scanner::scan(const std::string &root_path, ProgressCallback callback)
     m_skipped_files = 0;
     m_next_id = 1;
     m_callback = callback;
+    m_min_size = min_size;
     m_start_time = std::chrono::steady_clock::now();
 
     {
@@ -174,6 +175,12 @@ void Scanner::scan_recursive(const std::string &path, int64_t parent_id)
                 // Fallback: apparent file size on platforms without st_blocks.
                 fe.size = static_cast<uint64_t>(st.st_size);
 #endif
+                // Exclude files smaller than minimum size threshold
+                if (m_min_size > 0 && fe.size < m_min_size)
+                {
+                    m_skipped_files++;
+                    continue;
+                }
                 auto ftime = entry.last_write_time(ec);
                 if (!ec)
                 {

@@ -196,6 +196,37 @@ namespace json
         return result;
     }
 
+    // Simple JSON integer extractor (returns 0 if missing)
+    int64_t extract_int64(const std::string &json_str, const std::string &key)
+    {
+        std::string search = "\"" + key + "\"";
+        auto pos = json_str.find(search);
+        if (pos == std::string::npos)
+            return 0;
+        pos = json_str.find(':', pos);
+        if (pos == std::string::npos)
+            return 0;
+        // Move to first non-space
+        size_t i = pos + 1;
+        while (i < json_str.size() && isspace((unsigned char)json_str[i]))
+            i++;
+        if (i >= json_str.size())
+            return 0;
+        // parse optional sign
+        size_t start = i;
+        if (json_str[i] == '+' || json_str[i] == '-')
+            i++;
+        if (i >= json_str.size() || !isdigit((unsigned char)json_str[i]))
+            return 0;
+        while (i < json_str.size() && isdigit((unsigned char)json_str[i]))
+            i++;
+        try
+        {
+            return std::stoll(json_str.substr(start, i - start));
+        }
+        catch (...) { return 0; }
+    }
+
 } // namespace json
 
 // ============================================================================
@@ -440,6 +471,9 @@ struct ApiServer::Impl
                 exclusions = DEFAULT_EXCLUSIONS;
             active->exclusions = exclusions;
 
+            // Parse minimum file size to include (bytes)
+            int64_t min_size = json::extract_int64(req.body, "minSize");
+
             {
                 std::lock_guard<std::mutex> lock(scan_mutex);
                 active_scans[scan_id] = active;
@@ -447,10 +481,10 @@ struct ApiServer::Impl
             }
 
             // Start scan in background thread
-            active->thread = std::thread([this, active, path, scan_id]() {
+            active->thread = std::thread([this, active, path, scan_id, min_size]() {
                 active->scanner->scan(path, [&active](const ScanProgress& p) {
                     active->last_progress = p;
-                });
+                }, static_cast<uint64_t>(min_size));
 
                 // Filesystem walk done; now hashing duplicates
                 active->status = "hashing";

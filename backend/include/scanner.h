@@ -45,7 +45,7 @@ public:
     ~Scanner();
 
     // Start scanning a directory recursively
-    void scan(const std::string &root_path, ProgressCallback callback = nullptr);
+    void scan(const std::string &root_path, ProgressCallback callback = nullptr, uint64_t min_size = 0);
 
     // Stop ongoing scan
     void stop();
@@ -76,6 +76,7 @@ private:
     ProgressCallback m_callback;
     std::chrono::steady_clock::time_point m_start_time;
     int64_t m_next_id;
+    uint64_t m_min_size;
 
     // Track visited inodes to avoid counting hard links multiple times
     std::set<std::pair<uint64_t, uint64_t>> m_visited_inodes; // (dev, ino)

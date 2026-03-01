@@ -97,10 +97,14 @@ export async function checkHealth(): Promise<{
 export async function startScan(
   path: string,
   exclusions?: string[],
+  minSize?: number,
 ): Promise<{ scanId: number; status: string }> {
   const body: Record<string, unknown> = { path };
   if (exclusions && exclusions.length > 0) {
     body.exclusions = exclusions;
+  }
+  if (minSize && minSize > 0) {
+    body.minSize = minSize;
   }
   return apiFetch("/scans", {
     method: "POST",

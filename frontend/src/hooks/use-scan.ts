@@ -36,11 +36,11 @@ export function useScan() {
     }
   }, []);
 
-  const startNewScan = useCallback(async (path: string) => {
+  const startNewScan = useCallback(async (path: string, minSize = 0) => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await startScan(path);
+      const result = await startScan(path, undefined, minSize);
       setActiveScanId(result.scanId);
       return result.scanId;
     } catch (err) {

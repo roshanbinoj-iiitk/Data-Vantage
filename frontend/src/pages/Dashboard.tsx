@@ -46,6 +46,7 @@ export function Dashboard() {
   } = useScan();
 
   const [scanPath, setScanPath] = useState("");
+  const [minSize, setMinSize] = useState<number>(0);
   const [fileTypeStats, setFileTypeStats] = useState<FileTypeStats[]>([]);
 
   // Load stats for the most recent scan
@@ -60,7 +61,7 @@ export function Dashboard() {
 
   const handleStartScan = async () => {
     if (!scanPath.trim()) return;
-    const scanId = await startNewScan(scanPath.trim());
+    const scanId = await startNewScan(scanPath.trim(), minSize);
     if (scanId) {
       setScanPath("");
     }
@@ -140,6 +141,21 @@ export function Dashboard() {
               <Play className="h-4 w-4 mr-2" />
               {isLoading ? "Starting..." : "Start Scan"}
             </Button>
+          </div>
+          <div className="mt-3">
+            <label className="text-sm font-medium mr-2">Exclude files smaller than:</label>
+            <input
+              type="range"
+              min={0}
+              max={10485760}
+              step={1024}
+              value={minSize}
+              onChange={(e) => setMinSize(Number(e.target.value))}
+              disabled={isLoading || !!activeScanId}
+            />
+            <span className="ml-3 text-sm text-muted-foreground">
+              {formatBytes(minSize)}
+            </span>
           </div>
           {error && <p className="text-sm text-destructive mt-2">{error}</p>}
         </CardContent>
