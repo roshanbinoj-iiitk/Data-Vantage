@@ -199,7 +199,7 @@ export function FileTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {file.isDirectory ? "—" : formatBytes(file.sizeOnDisk)}
+                  {formatBytes(file.sizeOnDisk)}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {file.modifiedTime > 0
