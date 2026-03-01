@@ -26,6 +26,7 @@ import {
   deleteScan,
   type FileTypeStats,
 } from "@/api/backend";
+import { pickDirectory } from "@/api/backend";
 import { formatBytes, formatNumber, formatDuration } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -63,6 +64,23 @@ export function Dashboard() {
     if (scanId) {
       setScanPath("");
     }
+  };
+
+  const handleChooseDirectory = async () => {
+    try {
+      const res = await pickDirectory();
+      if (res && res.path && res.path.trim()) {
+        setScanPath(res.path);
+        return;
+      }
+    } catch (err) {
+      // fallthrough to prompt
+    }
+
+    const manual = window.prompt(
+      "GUI picker unavailable. Paste absolute directory path:",
+    );
+    if (manual && manual.trim()) setScanPath(manual.trim());
   };
 
   const handleDeleteScan = async (scanId: number) => {
@@ -107,6 +125,13 @@ export function Dashboard() {
               disabled={isLoading || !!activeScanId}
               className="flex-1"
             />
+            <Button
+              onClick={handleChooseDirectory}
+              disabled={isLoading || !!activeScanId}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-800 shadow-sm transition-all"
+            >
+              Choose
+            </Button>
             <Button
               onClick={handleStartScan}
               disabled={isLoading || !!activeScanId || !scanPath.trim()}

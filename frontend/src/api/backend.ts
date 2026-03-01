@@ -205,3 +205,8 @@ export async function getFileTypeStats(
 ): Promise<FileTypeStats[]> {
   return apiFetch(`/scans/${scanId}/stats`);
 }
+
+// Ask the backend to open a native directory picker and return the selected path (or empty string)
+export async function pickDirectory(): Promise<{ path: string }> {
+  return apiFetch(`/pick-directory`);
+}

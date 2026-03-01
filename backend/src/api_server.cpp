@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <fstream>
 #include <fnmatch.h>
+#include <cstdio>
 
 // ============================================================================
 // JSON helpers (minimal, no external dependency)
@@ -373,6 +374,37 @@ struct ApiServer::Impl
         // Health check
         server.Get("/api/health", [](const httplib::Request &, httplib::Response &res)
                    { res.set_content("{\"status\":\"ok\",\"service\":\"Data-Vantage\"}", "application/json"); });
+
+        // Try to open a native directory picker (zenity, kdialog). Returns {"path":"/selected/path"} or {"path":""} when unavailable
+        server.Get("/api/pick-directory", [](const httplib::Request &, httplib::Response &res)
+                   {
+            auto run_cmd = [](const std::string &cmd) -> std::string {
+                std::string result;
+                FILE *pipe = popen(cmd.c_str(), "r");
+                if (!pipe) return result;
+                char buffer[4096];
+                while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+                    result += buffer;
+                }
+                pclose(pipe);
+                // Trim trailing newlines/spaces
+                while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' '))
+                    result.pop_back();
+                return result;
+            };
+
+            std::string picked;
+
+            // Try zenity
+            picked = run_cmd("kdialog --getexistingdirectory 2>/dev/null");
+            if (picked.empty()) {
+                // Try kdialog
+                picked = run_cmd("zenity --file-selection --directory --title=\"Select%20Folder\" 2>/dev/null");
+            }
+
+            // If still empty, return an empty path so frontend can fallback to manual input
+            std::string body = "{\"path\":\"" + json::escape(picked) + "\"}";
+            res.set_content(body, "application/json"); });
 
         // ---- SCAN ENDPOINTS ----
 
