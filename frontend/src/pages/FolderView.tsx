@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { FileTable } from "@/components/FileTable";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
+import { FolderSunburst } from "@/components/FolderSunburst";
 import {
   getFiles,
   searchFiles,
@@ -293,33 +294,62 @@ export function FolderView() {
         </nav>
       )}
 
-      {/* File Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Files ({files.length})</CardTitle>
-          <CardDescription>
-            {isSearching
-              ? "Showing search results"
-              : "All indexed files in current directory"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="animate-pulse-slow text-muted-foreground">
-                Loading...
+      {/* Two-column layout: Chart + File Table */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sunburst Chart */}
+        {!isSearching && (
+          <Card className="lg:sticky lg:top-6 lg:self-start">
+            <CardHeader>
+              <CardTitle>Storage Distribution</CardTitle>
+              <CardDescription>
+                Click on folders to navigate
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center h-[500px]">
+                  <div className="animate-pulse-slow text-muted-foreground">
+                    Loading...
+                  </div>
+                </div>
+              ) : (
+                <FolderSunburst
+                  files={files}
+                  onDirectoryClick={handleDirectoryClick}
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* File Table */}
+        <Card className={!isSearching ? "" : "lg:col-span-2"}>
+          <CardHeader>
+            <CardTitle>Files ({files.length})</CardTitle>
+            <CardDescription>
+              {isSearching
+                ? "Showing search results"
+                : "All indexed files in current directory"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="max-h-[600px] overflow-y-auto">
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-pulse-slow text-muted-foreground">
+                  Loading...
+                </div>
               </div>
-            </div>
-          ) : (
-            <FileTable
-              files={files}
-              onDirectoryClick={handleDirectoryClick}
-              onDeleteFile={handleDeleteFile}
-              showPath={isSearching}
-            />
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <FileTable
+                files={files}
+                onDirectoryClick={handleDirectoryClick}
+                onDeleteFile={handleDeleteFile}
+                showPath={isSearching}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <ConfirmDialog
         open={confirmOpen}

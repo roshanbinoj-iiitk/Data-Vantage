@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useFilters } from "@/lib/filters";
 import { ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
 import { type FileEntry } from "@/api/backend";

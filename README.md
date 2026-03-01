@@ -30,7 +30,7 @@ data-vantage/
 - **REST API** — JSON endpoints for scans, files, duplicates, and statistics
 - **Real-time Progress** — Live scan progress polling from the frontend
 - **File Browser** — Navigate scanned directories with breadcrumb navigation
-- **Visualizations** — Pie charts for file type distribution
+- **Interactive Visualizations** — Dynamic pie chart with clickable folders for navigation (inspired by GNOME Baobab)
 - **Dark/Light Theme** — Toggle between themes
 
 ## Prerequisites
@@ -107,7 +107,7 @@ The frontend dev server proxies `/api` requests to the backend at `localhost:808
 ## Technology Stack
 
 - **Backend**: C++17, cpp-httplib, SQLite3, xxHash (embedded)
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Recharts
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Nivo Charts, Framer Motion
 - **Desktop** (optional): Tauri
 
 ## How It Works
