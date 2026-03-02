@@ -1,82 +1,92 @@
-import { useState } from 'react'
-import { ArrowUpDown, FileIcon, Image, Video, FileText, Music, Archive, Code } from 'lucide-react'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { formatFileSize, formatDate } from '@/lib/utils'
-import type { FileEntry } from '@/api/backend'
+import { useFilters } from "@/lib/filters";
+import { ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
+import { type FileEntry } from "@/api/backend";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { formatBytes, getFileIcon, cn } from "@/lib/utils";
 
 interface FileTableProps {
-  files: FileEntry[]
+  files: FileEntry[];
+  onFileClick?: (file: FileEntry) => void;
+  onDirectoryClick?: (file: FileEntry) => void;
+  onDeleteFile?: (file: FileEntry) => void;
+  showPath?: boolean;
 }
 
-type SortField = 'path' | 'size' | 'category' | 'modified'
-type SortDirection = 'asc' | 'desc'
+type SortField = "name" | "size" | "extension" | "modifiedTime";
+type SortDirection = "asc" | "desc";
 
-const getFileIcon = (category: string) => {
-  switch (category.toLowerCase()) {
-    case 'image':
-      return <Image className="h-4 w-4 text-purple-500" />
-    case 'video':
-      return <Video className="h-4 w-4 text-red-500" />
-    case 'document':
-      return <FileText className="h-4 w-4 text-blue-500" />
-    case 'audio':
-      return <Music className="h-4 w-4 text-green-500" />
-    case 'archive':
-      return <Archive className="h-4 w-4 text-yellow-500" />
-    case 'code':
-      return <Code className="h-4 w-4 text-cyan-500" />
-    default:
-      return <FileIcon className="h-4 w-4 text-zinc-500" />
-  }
-}
-
-const getCategoryColor = (category: string): "default" | "secondary" | "destructive" | "outline" => {
-  switch (category.toLowerCase()) {
-    case 'image':
-      return 'default'
-    case 'video':
-      return 'destructive'
-    case 'document':
-      return 'secondary'
-    default:
-      return 'outline'
-  }
-}
-
-export function FileTable({ files }: FileTableProps) {
-  const [sortField, setSortField] = useState<SortField>('path')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+export function FileTable({
+  files,
+  onDirectoryClick,
+  onFileClick,
+  onDeleteFile,
+  showPath = false,
+}: FileTableProps) {
+  const { fileTable, setFileTable } = useFilters();
+  const sortField = fileTable.sortField as SortField;
+  const sortDirection = fileTable.sortDirection as SortDirection;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+      setFileTable({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
     } else {
-      setSortField(field)
-      setSortDirection('asc')
+      setFileTable({ sortField: field, sortDirection: "asc" });
     }
-  }
+  };
+
+  const handleRowClick = (file: FileEntry) => {
+    if (file.isDirectory && onDirectoryClick) {
+      onDirectoryClick(file);
+    } else if (onFileClick) {
+      onFileClick(file);
+    }
+  };
 
   const sortedFiles = [...files].sort((a, b) => {
-    let aValue: string | number = a[sortField] || ''
-    let bValue: string | number = b[sortField] || ''
-
-    if (sortField === 'size') {
-      aValue = a.size
-      bValue = b.size
+    // Directories first
+    if (a.isDirectory !== b.isDirectory) {
+      return a.isDirectory ? -1 : 1;
     }
 
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortDirection === 'asc' 
+    let aValue: string | number;
+    let bValue: string | number;
+
+    switch (sortField) {
+      case "size":
+        aValue = a.sizeOnDisk;
+        bValue = b.sizeOnDisk;
+        break;
+      case "modifiedTime":
+        aValue = a.modifiedTime;
+        bValue = b.modifiedTime;
+        break;
+      case "extension":
+        aValue = a.extension || "";
+        bValue = b.extension || "";
+        break;
+      default:
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+    }
+
+    if (typeof aValue === "string" && typeof bValue === "string") {
+      return sortDirection === "asc"
         ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue)
+        : bValue.localeCompare(aValue);
     }
-
-    return sortDirection === 'asc' 
+    return sortDirection === "asc"
       ? (aValue as number) - (bValue as number)
-      : (bValue as number) - (aValue as number)
-  })
+      : (bValue as number) - (aValue as number);
+  });
 
   return (
     <div className="rounded-md border border-border">
@@ -88,10 +98,22 @@ export function FileTable({ files }: FileTableProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleSort('path')}
+                onClick={() => handleSort("name")}
                 className="hover:bg-transparent"
               >
                 Name
+                <ArrowUpDown className="ml-2 h-4 w-4" />
+              </Button>
+            </TableHead>
+            {showPath && <TableHead>Path</TableHead>}
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleSort("extension")}
+                className="hover:bg-transparent"
+              >
+                Type
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
@@ -99,7 +121,7 @@ export function FileTable({ files }: FileTableProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleSort('size')}
+                onClick={() => handleSort("size")}
                 className="hover:bg-transparent"
               >
                 Size
@@ -110,59 +132,101 @@ export function FileTable({ files }: FileTableProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleSort('category')}
-                className="hover:bg-transparent"
-              >
-                Category
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSort('modified')}
+                onClick={() => handleSort("modifiedTime")}
                 className="hover:bg-transparent"
               >
                 Modified
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
+            {onDeleteFile && <TableHead className="w-12"></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedFiles.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+              <TableCell
+                colSpan={
+                  showPath
+                    ? 6 + (onDeleteFile ? 1 : 0)
+                    : 5 + (onDeleteFile ? 1 : 0)
+                }
+                className="text-center text-muted-foreground py-8"
+              >
                 No files found. Start a scan to populate this table.
               </TableCell>
             </TableRow>
           ) : (
             sortedFiles.map((file, index) => (
-              <TableRow key={index} className="group">
-                <TableCell>{getFileIcon(file.category)}</TableCell>
-                <TableCell className="font-medium">
-                  <div className="truncate max-w-md" title={file.path}>
-                    {file.path.split('/').pop()}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate max-w-md">
-                    {file.path}
-                  </div>
-                </TableCell>
-                <TableCell>{formatFileSize(file.size)}</TableCell>
+              <TableRow
+                key={file.id || index}
+                className={cn(
+                  "group",
+                  file.isDirectory ? "cursor-pointer" : "",
+                )}
+                onClick={() => handleRowClick(file)}
+              >
                 <TableCell>
-                  <Badge variant={getCategoryColor(file.category)}>
-                    {file.category}
-                  </Badge>
+                  {file.isDirectory ? (
+                    <FolderOpen className="h-4 w-4 text-blue-500" />
+                  ) : (
+                    <span>{getFileIcon(file.extension, false)}</span>
+                  )}
                 </TableCell>
+                <TableCell className="font-medium">
+                  <div
+                    className={cn(
+                      "truncate max-w-md",
+                      file.isDirectory ? "text-primary font-semibold" : "",
+                    )}
+                    title={file.name}
+                  >
+                    {file.name}
+                  </div>
+                </TableCell>
+                {showPath && (
+                  <TableCell className="text-xs text-muted-foreground font-mono">
+                    <div className="truncate max-w-md" title={file.path}>
+                      {file.path}
+                    </div>
+                  </TableCell>
+                )}
+                <TableCell>
+                  {file.isDirectory ? (
+                    <Badge variant="secondary">Folder</Badge>
+                  ) : (
+                    <Badge variant="outline">{file.extension || "file"}</Badge>
+                  )}
+                </TableCell>
+                <TableCell>{formatBytes(file.sizeOnDisk)}</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {file.modified ? formatDate(file.modified) : 'N/A'}
+                  {file.modifiedTime > 0
+                    ? new Date(file.modifiedTime * 1000).toLocaleDateString()
+                    : "—"}
                 </TableCell>
+                {onDeleteFile && (
+                  <TableCell>
+                    {!file.isDirectory && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteFile(file);
+                        }}
+                        title="Delete file"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             ))
           )}
         </TableBody>
       </Table>
     </div>
-  )
+  );
 }

@@ -1,59 +1,25 @@
-@import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-@theme {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --radius: var(--radius);
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   :root {
-    /* Cool slate-blue page background — not harsh white */
     --background: 220 20% 96%;
     --foreground: 224 25% 12%;
-
-    /* Cards slightly elevated above background */
     --card: 0 0% 100%;
     --card-foreground: 224 25% 12%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 224 25% 12%;
-
     --primary: 221 83% 53%;
     --primary-foreground: 0 0% 98%;
-
-    /* Muted surfaces with a hint of blue */
     --secondary: 220 15% 91%;
     --secondary-foreground: 224 20% 25%;
-
     --muted: 220 15% 91%;
     --muted-foreground: 220 12% 45%;
-
     --accent: 220 15% 88%;
     --accent-foreground: 224 20% 20%;
-
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-
-    /* Stronger, visible borders */
     --border: 220 14% 82%;
     --input: 220 14% 85%;
     --ring: 221 83% 53%;
@@ -84,9 +50,15 @@
 }
 
 @layer base {
+  * {
+    @apply border-border;
+    transition-property:
+      color, background-color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    @apply bg-background text-foreground;
     font-family:
       "Inter",
       -apple-system,
@@ -103,43 +75,75 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
-/* Custom scrollbar */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background-color: transparent;
 }
-
 .dark ::-webkit-scrollbar-track {
   background-color: rgb(24 24 27);
 }
-
 ::-webkit-scrollbar-thumb {
   background-color: rgb(196 202 214);
   border-radius: 9999px;
 }
-
 .dark ::-webkit-scrollbar-thumb {
   background-color: rgb(63 63 70);
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgb(148 158 178);
 }
-
 .dark ::-webkit-scrollbar-thumb:hover {
   background-color: rgb(82 82 91);
 }
 
-/* Smooth transitions */
-* {
-  transition-property:
-    color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+/* Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2s ease-in-out infinite;
+}
+
+@keyframes progress-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-progress {
+  animation: progress-bar 1.5s linear infinite;
 }

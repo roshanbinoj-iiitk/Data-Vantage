@@ -1,27 +1,31 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, FileIcon } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { formatFileSize } from '@/lib/utils'
+import { useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileIcon,
+  Trash2,
+  Shield,
+} from "lucide-react";
+import { type DuplicateGroup } from "@/api/backend";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { formatBytes } from "@/lib/utils";
 
-interface DuplicateFile {
-  path: string
-  size: number
+interface DuplicateGroupCardProps {
+  group: DuplicateGroup;
+  index: number;
+  onDeleteFile?: (path: string) => void;
+  onDeleteGroup?: (hash: string, keepPath: string) => void;
 }
 
-interface DuplicateGroupProps {
-  hash: string
-  files: DuplicateFile[]
-}
-
-export function DuplicateGroup({ hash, files }: DuplicateGroupProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  
-  if (files.length < 2) return null
-
-  const totalSize = files[0].size
-  const wastedSpace = totalSize * (files.length - 1)
+export function DuplicateGroupCard({
+  group,
+  index,
+  onDeleteFile,
+  onDeleteGroup,
+}: DuplicateGroupCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -41,47 +45,81 @@ export function DuplicateGroup({ hash, files }: DuplicateGroupProps) {
               )}
             </Button>
             <CardTitle className="text-base">
-              {files.length} Duplicate Files
+              #{index + 1} — {group.fileCount} Duplicate Files
             </CardTitle>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="destructive">
-              {formatFileSize(wastedSpace)} wasted
+              {formatBytes(group.wastedSpace)} wasted
             </Badge>
             <Badge variant="secondary">
-              {formatFileSize(totalSize)} each
+              {formatBytes(group.fileSize)} each
             </Badge>
           </div>
         </div>
       </CardHeader>
-      
+
       {isExpanded && (
         <CardContent className="pt-0">
           <div className="space-y-2">
-            {files.map((file, index) => (
+            {group.files.map((file, i) => (
               <div
-                key={index}
+                key={file.id || i}
                 className="flex items-center gap-3 p-3 rounded-md bg-muted/40 hover:bg-muted/70 transition-colors border border-transparent hover:border-border"
               >
                 <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate" title={file.path}>
-                    {file.path.split('/').pop()}
+                  <div
+                    className="text-sm font-medium truncate"
+                    title={file.path}
+                  >
+                    {file.name}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
                     {file.path}
                   </div>
                 </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {onDeleteGroup && group.fileCount > 1 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2"
+                      onClick={() => onDeleteGroup(group.hash, file.path)}
+                      title="Keep this file, delete all other copies"
+                    >
+                      <Shield className="h-3 w-3 mr-1" />
+                      Keep
+                    </Button>
+                  )}
+                  {onDeleteFile && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs px-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                      onClick={() => onDeleteFile(file.path)}
+                      title="Delete this file"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
-          <div className="mt-4 pt-4 border-t border-border">
+          <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
             <div className="text-xs text-muted-foreground font-mono truncate">
-              Hash: {hash}
+              Hash: {group.hash}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Total space used:{" "}
+              <span className="font-semibold">
+                {formatBytes(group.fileSize * group.fileCount)}
+              </span>
             </div>
           </div>
         </CardContent>
       )}
     </Card>
-  )
+  );
 }
