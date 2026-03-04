@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Files", href: "/files", icon: FolderOpen },
   { name: "Duplicates", href: "/duplicates", icon: Copy },
 ];
@@ -22,6 +22,7 @@ const navigation = [
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background">
@@ -43,9 +44,17 @@ export function Layout() {
 
           <div className="flex items-center gap-2 font-bold text-xl">
             <HardDrive className="h-6 w-6 text-blue-600" />
-            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <button
+              onClick={() => {
+                try {
+                  localStorage.setItem("data-vantage-launched", "true");
+                } catch (e) {}
+                navigate("/");
+              }}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+            >
               Data Vantage
-            </span>
+            </button>
           </div>
 
           <div className="ml-auto flex items-center gap-2">

@@ -4,53 +4,18 @@ import { Dashboard } from "@/pages/Dashboard";
 import { FolderView } from "@/pages/FolderView";
 import { Duplicates } from "@/pages/Duplicates";
 import { Landing } from "@/pages/Landing";
-import RequireLaunch from "@/components/RequireLaunch";
+// Removed RequireLaunch wrapper so routes are directly accessible
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/" element={<Layout />}>
-        <Route
-          path="dashboard"
-          element={
-            <RequireLaunch>
-              <Dashboard />
-            </RequireLaunch>
-          }
-        />
-        <Route
-          path="files"
-          element={
-            <RequireLaunch>
-              <FolderView />
-            </RequireLaunch>
-          }
-        />
-        <Route
-          path="files/:scanId"
-          element={
-            <RequireLaunch>
-              <FolderView />
-            </RequireLaunch>
-          }
-        />
-        <Route
-          path="duplicates"
-          element={
-            <RequireLaunch>
-              <Duplicates />
-            </RequireLaunch>
-          }
-        />
-        <Route
-          path="duplicates/:scanId"
-          element={
-            <RequireLaunch>
-              <Duplicates />
-            </RequireLaunch>
-          }
-        />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="files" element={<FolderView />} />
+        <Route path="files/:scanId" element={<FolderView />} />
+        <Route path="duplicates" element={<Duplicates />} />
+        <Route path="duplicates/:scanId" element={<Duplicates />} />
       </Route>
     </Routes>
   );
