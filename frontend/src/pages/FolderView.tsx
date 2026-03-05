@@ -315,7 +315,7 @@ export function FolderView() {
       )}
 
       {/* Two-column layout: Chart + File Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-6">
         {/* Sunburst Chart */}
         {!isSearching && (
           <Card className="lg:sticky lg:top-6 lg:self-start">
@@ -351,7 +351,7 @@ export function FolderView() {
                 : "All indexed files in current directory"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="max-h-[600px] overflow-y-auto">
+          <CardContent className="max-h-[600px] overflow-auto">
             {loading ? (
               <div className="text-center py-12">
                 <div className="animate-pulse-slow text-muted-foreground">
