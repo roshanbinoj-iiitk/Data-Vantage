@@ -72,7 +72,7 @@ export function Layout() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -300, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)] w-64 border-r border-border bg-card shadow-sm"
+              className="fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)] w-16 border-r border-border bg-card shadow-sm"
             >
               <nav className="space-y-1 p-4">
                 {navigation.map((item) => {
@@ -85,14 +85,19 @@ export function Layout() {
                       key={item.name}
                       to={item.href}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent",
+                        "relative group flex items-center justify-center rounded-lg p-2 text-sm font-medium transition-colors",
                         isActive
                           ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-foreground/70 hover:text-foreground hover:bg-accent",
                       )}
+                      aria-label={item.name}
                     >
                       <item.icon className="h-5 w-5" />
-                      {item.name}
+
+                      {/* Tooltip-like label shown on hover */}
+                      <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-card/90 px-2 py-1 text-sm font-medium text-foreground opacity-0 shadow-sm pointer-events-none transition-opacity group-hover:opacity-100">
+                        {item.name}
+                      </span>
                     </Link>
                   );
                 })}

@@ -24,7 +24,7 @@ export function Landing() {
         {/* Content */}
         <div className="relative z-10 container mx-auto px-6 text-center">
           <h1 className="text-6xl md:text-8xl font-bold tracking-tighter mb-6">
-            <span className="text-foreground">Data</span>
+            <span className="text-white">Data</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500">
               {" "}
               Vantage
