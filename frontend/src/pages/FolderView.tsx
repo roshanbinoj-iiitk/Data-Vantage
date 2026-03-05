@@ -96,6 +96,26 @@ export function FolderView() {
     setIsSearching(false);
   };
 
+  const handleBack = () => {
+    // go up one level
+    if (breadcrumbs.length === 0) {
+      setCurrentParentId(0);
+      loadFiles(0);
+      return;
+    }
+
+    const newBreadcrumbs = breadcrumbs.slice(0, -1);
+    const newParentId =
+      newBreadcrumbs.length === 0
+        ? 0
+        : newBreadcrumbs[newBreadcrumbs.length - 1].id;
+    setBreadcrumbs(newBreadcrumbs);
+    setCurrentParentId(newParentId);
+    loadFiles(newParentId);
+    setGlobalSearch("");
+    setIsSearching(false);
+  };
+
   const handleBreadcrumbClick = (index: number) => {
     if (index === -1) {
       setCurrentParentId(0);
@@ -301,9 +321,7 @@ export function FolderView() {
           <Card className="lg:sticky lg:top-6 lg:self-start">
             <CardHeader>
               <CardTitle>Storage Distribution</CardTitle>
-              <CardDescription>
-                Click on folders to navigate
-              </CardDescription>
+              <CardDescription>Click on folders to navigate</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -316,6 +334,7 @@ export function FolderView() {
                 <FolderSunburst
                   files={files}
                   onDirectoryClick={handleDirectoryClick}
+                  onBack={handleBack}
                 />
               )}
             </CardContent>
