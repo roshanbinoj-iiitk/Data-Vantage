@@ -17,7 +17,7 @@ void signal_handler(int)
 int main(int argc, char *argv[])
 {
     std::string host = "0.0.0.0";
-    int port = 8080;
+    int port = 8000;
 
     // Parse command line args
     for (int i = 1; i < argc; i++)
