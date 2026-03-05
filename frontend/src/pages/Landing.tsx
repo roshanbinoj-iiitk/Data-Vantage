@@ -30,8 +30,10 @@ export function Landing() {
               Vantage
             </span>
           </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto font-light mb-8">
-            Visualize your storage. Find duplicates. Reclaim space.
+          <p className="text-xl md:text-2xl max-w-2xl mx-auto font-light mb-8">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600">
+              Visualize your storage. Find duplicates. Reclaim space.
+            </span>
           </p>
           <Button
             size="lg"
