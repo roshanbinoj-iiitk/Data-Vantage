@@ -34,3 +34,4 @@ package() {
   install -Dm644 "$srcdir/Data-Vantage-$pkgver/LICENSE" \
     "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
+sha256sums=('13090af58da268f9fb73d7970867d55f43304acb05a53f33dc3e2f7f73c18dc8')

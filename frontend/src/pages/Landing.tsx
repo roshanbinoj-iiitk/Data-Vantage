@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HardDiskBackground } from "@/components/HardDiskBackground";
 import { HardDrive, Files, Copy, Gauge, ArrowRight } from "lucide-react";
@@ -6,7 +5,6 @@ import { Button } from "@/components/ui/button";
 
 export function Landing() {
   const navigate = useNavigate();
-  const [isHovering, setIsHovering] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 overflow-hidden">
@@ -44,8 +42,6 @@ export function Landing() {
               } catch (e) {}
               navigate("/dashboard");
             }}
-            onMouseEnter={() => setIsHovering(true)}
-            onMouseLeave={() => setIsHovering(false)}
           >
             Get Started
             <ArrowRight className="ml-2 h-5 w-5" />
