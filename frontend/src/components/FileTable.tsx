@@ -21,7 +21,7 @@ interface FileTableProps {
   showPath?: boolean;
 }
 
-type SortField = "name" | "size" | "extension" | "modifiedTime";
+type SortField = "name" | "size" | "extension";
 type SortDirection = "asc" | "desc";
 
 export function FileTable({
@@ -32,7 +32,9 @@ export function FileTable({
   showPath = false,
 }: FileTableProps) {
   const { fileTable, setFileTable } = useFilters();
-  const sortField = fileTable.sortField as SortField;
+  const sortFieldRaw = fileTable.sortField as unknown;
+  const sortField: SortField =
+    sortFieldRaw === "modifiedTime" ? "name" : (sortFieldRaw as SortField);
   const sortDirection = fileTable.sortDirection as SortDirection;
 
   const handleSort = (field: SortField) => {
@@ -64,10 +66,6 @@ export function FileTable({
       case "size":
         aValue = a.sizeOnDisk;
         bValue = b.sizeOnDisk;
-        break;
-      case "modifiedTime":
-        aValue = a.modifiedTime;
-        bValue = b.modifiedTime;
         break;
       case "extension":
         aValue = a.extension || "";
@@ -128,17 +126,6 @@ export function FileTable({
                 <ArrowUpDown className="ml-2 h-4 w-4" />
               </Button>
             </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSort("modifiedTime")}
-                className="hover:bg-transparent"
-              >
-                Modified
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </TableHead>
             {onDeleteFile && <TableHead className="w-12"></TableHead>}
           </TableRow>
         </TableHeader>
@@ -148,8 +135,8 @@ export function FileTable({
               <TableCell
                 colSpan={
                   showPath
-                    ? 6 + (onDeleteFile ? 1 : 0)
-                    : 5 + (onDeleteFile ? 1 : 0)
+                    ? 5 + (onDeleteFile ? 1 : 0)
+                    : 4 + (onDeleteFile ? 1 : 0)
                 }
                 className="text-center text-muted-foreground py-8"
               >
@@ -199,11 +186,6 @@ export function FileTable({
                   )}
                 </TableCell>
                 <TableCell>{formatBytes(file.sizeOnDisk)}</TableCell>
-                <TableCell className="text-muted-foreground">
-                  {file.modifiedTime > 0
-                    ? new Date(file.modifiedTime * 1000).toLocaleDateString()
-                    : "—"}
-                </TableCell>
                 {onDeleteFile && (
                   <TableCell>
                     {!file.isDirectory && (

@@ -8,7 +8,7 @@ import React, {
 
 type DuplicatesSortField = "name" | "size" | "path" | "count" | "wasted";
 type SortDir = "asc" | "desc";
-type FileTableSortField = "name" | "size" | "extension" | "modifiedTime";
+type FileTableSortField = "name" | "size" | "extension";
 
 interface DuplicatesState {
   sortField: DuplicatesSortField;
@@ -54,7 +54,28 @@ function loadStored(): FiltersState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState;
     const parsed = JSON.parse(raw);
-    return { ...defaultState, ...parsed } as FiltersState;
+
+    const parsedFileTable = (parsed as Partial<FiltersState> | null)?.fileTable;
+    const rawSortField = (parsedFileTable as Partial<FileTableState> | null)
+      ?.sortField as unknown;
+    const rawSortDirection = (parsedFileTable as Partial<FileTableState> | null)
+      ?.sortDirection as unknown;
+
+    const sortField: FileTableSortField =
+      rawSortField === "size" || rawSortField === "extension" || rawSortField === "name"
+        ? rawSortField
+        : "name";
+
+    const sortDirection: SortDir =
+      rawSortDirection === "desc" || rawSortDirection === "asc"
+        ? rawSortDirection
+        : defaultState.fileTable.sortDirection;
+
+    return {
+      ...defaultState,
+      ...(parsed as Partial<FiltersState>),
+      fileTable: { sortField, sortDirection },
+    } as FiltersState;
   } catch {
     return defaultState;
   }

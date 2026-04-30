@@ -318,7 +318,7 @@ export function FolderView() {
       <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-6">
         {/* Sunburst Chart */}
         {!isSearching && (
-          <Card className="lg:sticky lg:top-6 lg:self-start">
+          <Card className="lg:sticky lg:top-6 lg:self-start min-w-0">
             <CardHeader>
               <CardTitle>Storage Distribution</CardTitle>
               <CardDescription>Click on folders to navigate</CardDescription>
@@ -342,7 +342,9 @@ export function FolderView() {
         )}
 
         {/* File Table */}
-        <Card className={!isSearching ? "" : "lg:col-span-2"}>
+        <Card
+          className={`${!isSearching ? "" : "lg:col-span-2"} min-w-0`}
+        >
           <CardHeader>
             <CardTitle>Files ({files.length})</CardTitle>
             <CardDescription>
