@@ -92,6 +92,12 @@ The frontend dev server proxies `/api` requests to the backend at `localhost:800
 
 ### Install
 
+Before the install please install cpp-httplib using the following command:
+
+```bash
+yay -S cpp-httplib --mflags "--nocheck"
+```
+
 Use your preferred AUR helper (examples below):
 
 ```bash
