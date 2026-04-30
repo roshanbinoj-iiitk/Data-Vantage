@@ -86,7 +86,38 @@ npm run dev
 # Opens at http://localhost:5173
 ```
 
-The frontend dev server proxies `/api` requests to the backend at `localhost:8080`.
+The frontend dev server proxies `/api` requests to the backend at `localhost:8000`.
+
+## Arch Linux (AUR)
+
+### Install
+
+Use your preferred AUR helper (examples below):
+
+```bash
+paru -S data-vantage
+# or
+yay -S data-vantage
+```
+
+### Launch
+
+Run the server (it serves the built web UI by default), then open the URL in your browser:
+
+```bash
+data-vantage
+# Web UI: http://localhost:8000
+```
+
+Notes:
+
+- The server creates `data_vantage.db` in the current working directory, so start it from a writable folder.
+- Optional directory pickers: install `zenity` (GTK) or `kdialog` (KDE) for the native folder chooser.
+- You can override the bind host/port or web root:
+
+```bash
+data-vantage --host 127.0.0.1 --port 8000 --web-root /usr/share/data-vantage/web
+```
 
 ## API Endpoints
 

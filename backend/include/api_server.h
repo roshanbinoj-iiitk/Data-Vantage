@@ -6,7 +6,7 @@
 class ApiServer
 {
 public:
-    ApiServer(const std::string &host = "0.0.0.0", int port = 8080);
+    ApiServer(const std::string &host = "0.0.0.0", int port = 8000, const std::string &web_root = "");
     ~ApiServer();
 
     void start();

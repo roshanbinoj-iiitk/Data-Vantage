@@ -18,6 +18,7 @@ int main(int argc, char *argv[])
 {
     std::string host = "0.0.0.0";
     int port = 8000;
+    std::string web_root = "/usr/share/data-vantage/web";
 
     // Parse command line args
     for (int i = 1; i < argc; i++)
@@ -31,12 +32,18 @@ int main(int argc, char *argv[])
         {
             host = argv[++i];
         }
+        else if (arg == "--web-root" && i + 1 < argc)
+        {
+            web_root = argv[++i];
+        }
         else if (arg == "--help")
         {
             std::cout << "Data-Vantage Backend Server\n"
                       << "Usage: data-vantage [options]\n"
                       << "  --host, -h  Host to bind (default: 0.0.0.0)\n"
-                      << "  --port, -p  Port to listen on (default: 8080)\n"
+                      << "  --port, -p  Port to listen on (default: 8000)\n"
+                      << "  --web-root  Serve frontend assets from this path\n"
+                      << "             (default: /usr/share/data-vantage/web)\n"
                       << "  --help      Show this help\n";
             return 0;
         }
@@ -47,7 +54,7 @@ int main(int argc, char *argv[])
 
     try
     {
-        g_server = std::make_unique<ApiServer>(host, port);
+        g_server = std::make_unique<ApiServer>(host, port, web_root);
         g_server->start();
     }
     catch (const std::exception &e)

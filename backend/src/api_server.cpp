@@ -233,6 +233,35 @@ namespace json
 } // namespace json
 
 // ============================================================================
+// Web asset helpers
+// ============================================================================
+
+static bool starts_with(const std::string &value, const std::string &prefix)
+{
+    return value.rfind(prefix, 0) == 0;
+}
+
+static std::string join_path(const std::string &base, const std::string &name)
+{
+    if (base.empty())
+        return name;
+    if (base.back() == '/')
+        return base + name;
+    return base + "/" + name;
+}
+
+static bool read_file_text(const std::string &path, std::string &out)
+{
+    std::ifstream file(path, std::ios::in | std::ios::binary);
+    if (!file)
+        return false;
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    out = buffer.str();
+    return true;
+}
+
+// ============================================================================
 // File exclusion helpers
 // ============================================================================
 
@@ -382,11 +411,14 @@ struct ApiServer::Impl
     std::string host;
     int port;
     Database db;
+    std::string web_root;
+    bool web_root_enabled = false;
     std::mutex scan_mutex;
     std::map<int64_t, std::shared_ptr<ActiveScan>> active_scans;
     std::map<int64_t, std::vector<std::string>> scan_exclusions; // persist across scan lifetime
 
-    Impl(const std::string &h, int p) : host(h), port(p), db("data_vantage.db") {}
+    Impl(const std::string &h, int p, const std::string &web_root_path)
+        : host(h), port(p), db("data_vantage.db"), web_root(web_root_path) {}
 
     void setup_routes()
     {
@@ -1011,11 +1043,44 @@ struct ApiServer::Impl
             }
             arr += "]";
             res.set_content(arr, "application/json"); });
+
+        if (!web_root.empty())
+        {
+            namespace fs = std::filesystem;
+            if (fs::exists(web_root))
+            {
+                if (!server.set_base_dir(web_root.c_str()))
+                {
+                    std::cerr << "Warning: failed to serve web root: " << web_root << std::endl;
+                }
+
+                server.set_error_handler([this](const httplib::Request &req, httplib::Response &res)
+                                         {
+                    if (res.status != 404)
+                        return;
+                    if (starts_with(req.path, "/api"))
+                        return;
+
+                    std::string index_path = join_path(web_root, "index.html");
+                    std::string html;
+                    if (read_file_text(index_path, html))
+                    {
+                        res.set_content(html, "text/html");
+                        res.status = 200;
+                    } });
+
+                web_root_enabled = true;
+            }
+            else
+            {
+                std::cerr << "Warning: web root not found: " << web_root << std::endl;
+            }
+        }
     }
 };
 
-ApiServer::ApiServer(const std::string &host, int port)
-    : m_impl(std::make_unique<Impl>(host, port))
+ApiServer::ApiServer(const std::string &host, int port, const std::string &web_root)
+    : m_impl(std::make_unique<Impl>(host, port, web_root))
 {
     m_impl->setup_routes();
 }
