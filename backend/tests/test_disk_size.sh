@@ -42,18 +42,28 @@ mkdir "$TMPDIR/subdir"
 dd if=/dev/urandom of="$TMPDIR/subdir/file_c" bs=1 count=3000 2>/dev/null
 
 # Expected disk consumption via du (in bytes, 512-byte block granularity)
-EXPECTED_DU=$(du -B1 -s "$TMPDIR" | awk '{print $1}')
+if du -B1 -s "$TMPDIR" &>/dev/null; then
+    EXPECTED_DU=$(du -B1 -s "$TMPDIR" | awk '{print $1}')
+else
+    # Fallback for BSD du (macOS)
+    EXPECTED_DU=$(du -s "$TMPDIR" | awk '{print $1}')
+fi
 # Subtract the directory entries' own disk usage — Data-Vantage only sums
 # regular files, not directory metadata.  Compute file-only total via stat.
 EXPECTED_FILE_BYTES=0
 while IFS= read -r -d '' f; do
-    blocks=$(stat -c '%b' "$f")
+    if stat --version &>/dev/null; then
+        blocks=$(stat -c '%b' "$f")
+    else
+        # BSD stat (macOS)
+        blocks=$(stat -f '%b' "$f")
+    fi
     EXPECTED_FILE_BYTES=$(( EXPECTED_FILE_BYTES + blocks * 512 ))
 done < <(find "$TMPDIR" -type f -print0)
 
 echo "Temp dir:  $TMPDIR"
 echo "Expected file disk bytes: $EXPECTED_FILE_BYTES"
-echo "du -B1 -s total:          $EXPECTED_DU"
+echo "du total:                 $EXPECTED_DU"
 
 # --- start server ----------------------------------------------------------
 "$BINARY" --port "$PORT" &
@@ -108,7 +118,11 @@ else
 fi
 
 # Check one specific file
-STAT_BLOCKS_A=$(stat -c '%b' "$TMPDIR/file_a")
+if stat --version &>/dev/null; then
+    STAT_BLOCKS_A=$(stat -c '%b' "$TMPDIR/file_a")
+else
+    STAT_BLOCKS_A=$(stat -f '%b' "$TMPDIR/file_a")
+fi
 EXPECTED_A=$(( STAT_BLOCKS_A * 512 ))
 # Extract sizeOnDisk for file_a from JSON (simple grep)
 SIZE_A=$(echo "$FILES_JSON" | grep -o '"name":"file_a"[^}]*"sizeOnDisk":[0-9]*' | grep -o '"sizeOnDisk":[0-9]*' | cut -d: -f2)

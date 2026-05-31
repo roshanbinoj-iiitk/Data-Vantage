@@ -168,7 +168,7 @@ void Scanner::scan_recursive(const std::string &path, int64_t parent_id)
                 }
 
                 fe.extension = entry.path().extension().string();
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
                 // Actual disk consumption: st_blocks is in 512-byte units (POSIX).
                 fe.size = static_cast<uint64_t>(st.st_blocks) * 512;
 #else

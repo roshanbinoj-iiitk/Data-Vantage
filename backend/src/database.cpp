@@ -267,34 +267,26 @@ std::vector<FileEntry> Database::get_files(int64_t scan_id, int64_t parent_id, i
 
     if (parent_id >= 0)
     {
-        sql = "SELECT f.id, f.path, f.name, f.extension, "
-              "CASE WHEN f.is_directory = 1 THEN "
-              "(SELECT COALESCE(SUM(size), 0) FROM files WHERE scan_id = ? AND path LIKE f.path || '/%') "
-              "ELSE f.size END as calculated_size, "
+        sql = "SELECT f.id, f.path, f.name, f.extension, f.size, "
               "f.modified_time, f.is_directory, f.hash, f.parent_id "
               "FROM files f WHERE f.scan_id = ? AND f.parent_id = ? "
               "ORDER BY f.is_directory DESC, f.name ASC LIMIT ? OFFSET ?;";
         sqlite3_prepare_v2(m_impl->db, sql.c_str(), -1, &stmt, nullptr);
         sqlite3_bind_int64(stmt, 1, scan_id);
-        sqlite3_bind_int64(stmt, 2, scan_id);
-        sqlite3_bind_int64(stmt, 3, parent_id);
-        sqlite3_bind_int(stmt, 4, limit);
-        sqlite3_bind_int(stmt, 5, offset);
+        sqlite3_bind_int64(stmt, 2, parent_id);
+        sqlite3_bind_int(stmt, 3, limit);
+        sqlite3_bind_int(stmt, 4, offset);
     }
     else
     {
-        sql = "SELECT f.id, f.path, f.name, f.extension, "
-              "CASE WHEN f.is_directory = 1 THEN "
-              "(SELECT COALESCE(SUM(size), 0) FROM files WHERE scan_id = ? AND path LIKE f.path || '/%') "
-              "ELSE f.size END as calculated_size, "
+        sql = "SELECT f.id, f.path, f.name, f.extension, f.size, "
               "f.modified_time, f.is_directory, f.hash, f.parent_id "
               "FROM files f WHERE f.scan_id = ? "
               "ORDER BY f.is_directory DESC, f.name ASC LIMIT ? OFFSET ?;";
         sqlite3_prepare_v2(m_impl->db, sql.c_str(), -1, &stmt, nullptr);
         sqlite3_bind_int64(stmt, 1, scan_id);
-        sqlite3_bind_int64(stmt, 2, scan_id);
-        sqlite3_bind_int(stmt, 3, limit);
-        sqlite3_bind_int(stmt, 4, offset);
+        sqlite3_bind_int(stmt, 2, limit);
+        sqlite3_bind_int(stmt, 3, offset);
     }
 
     while (sqlite3_step(stmt) == SQLITE_ROW)
@@ -322,17 +314,13 @@ std::vector<FileEntry> Database::search_files(int64_t scan_id, const std::string
 {
     std::vector<FileEntry> results;
     sqlite3_stmt *stmt;
-    const char *sql = "SELECT f.id, f.path, f.name, f.extension, "
-                      "CASE WHEN f.is_directory = 1 THEN "
-                      "(SELECT COALESCE(SUM(size), 0) FROM files WHERE scan_id = ? AND path LIKE f.path || '/%') "
-                      "ELSE f.size END as calculated_size, "
+    const char *sql = "SELECT f.id, f.path, f.name, f.extension, f.size, "
                       "f.modified_time, f.is_directory, f.hash, f.parent_id "
                       "FROM files f WHERE f.scan_id = ? AND f.name LIKE ? LIMIT 100;";
     sqlite3_prepare_v2(m_impl->db, sql, -1, &stmt, nullptr);
     sqlite3_bind_int64(stmt, 1, scan_id);
-    sqlite3_bind_int64(stmt, 2, scan_id);
     std::string pattern = "%" + query + "%";
-    sqlite3_bind_text(stmt, 3, pattern.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, pattern.c_str(), -1, SQLITE_STATIC);
 
     while (sqlite3_step(stmt) == SQLITE_ROW)
     {

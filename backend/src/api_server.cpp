@@ -526,6 +526,23 @@ struct ApiServer::Impl
 
                 auto files = active->scanner->get_files();
 
+                // Precompute directory sizes in memory (O(N) bottom-up pass)
+                std::unordered_map<int64_t, size_t> id_to_index;
+                id_to_index.reserve(files.size());
+                for (size_t i = 0; i < files.size(); ++i) {
+                    id_to_index[files[i].id] = i;
+                }
+                for (size_t i = files.size(); i > 0; --i) {
+                    size_t idx = i - 1;
+                    const auto& fe = files[idx];
+                    if (fe.parent_id >= 0) {
+                        auto it = id_to_index.find(fe.parent_id);
+                        if (it != id_to_index.end()) {
+                            files[it->second].size += fe.size;
+                        }
+                    }
+                }
+
                 // Hash files and find duplicates
                 // Filter out excluded files before duplicate detection
                 std::string root_normalized = path;
@@ -856,7 +873,7 @@ struct ApiServer::Impl
             namespace fs = std::filesystem;
             std::string root_canonical;
             try {
-                root_canonical = fs::canonical(scan.root_path).string();
+                root_canonical = fs::weakly_canonical(scan.root_path).string();
             } catch (...) {
                 root_canonical = scan.root_path;
             }
@@ -868,12 +885,7 @@ struct ApiServer::Impl
                 // Path traversal protection: resolve canonical and check prefix
                 std::string canonical_path;
                 try {
-                    if (fs::exists(path)) {
-                        canonical_path = fs::canonical(path).string();
-                    } else {
-                        // File already gone on disk; still remove from DB
-                        canonical_path = path;
-                    }
+                    canonical_path = fs::weakly_canonical(path).string();
                 } catch (...) {
                     canonical_path = path;
                 }
@@ -951,7 +963,7 @@ struct ApiServer::Impl
             namespace fs = std::filesystem;
             std::string root_canonical;
             try {
-                root_canonical = fs::canonical(scan.root_path).string();
+                root_canonical = fs::weakly_canonical(scan.root_path).string();
             } catch (...) {
                 root_canonical = scan.root_path;
             }
@@ -976,11 +988,7 @@ struct ApiServer::Impl
             for (const auto &path : to_delete) {
                 std::string canonical_path;
                 try {
-                    if (fs::exists(path)) {
-                        canonical_path = fs::canonical(path).string();
-                    } else {
-                        canonical_path = path;
-                    }
+                    canonical_path = fs::weakly_canonical(path).string();
                 } catch (...) {
                     canonical_path = path;
                 }
