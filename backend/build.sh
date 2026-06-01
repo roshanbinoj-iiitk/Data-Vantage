@@ -41,7 +41,14 @@ cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" ..
 
 # Build
 echo "Building..."
-cmake --build . -j$(nproc)
+if command -v nproc &> /dev/null; then
+    JOBS="$(nproc)"
+elif command -v sysctl &> /dev/null; then
+    JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+else
+    JOBS=2
+fi
+cmake --build . -j"$JOBS"
 
 echo ""
 echo "============================================"

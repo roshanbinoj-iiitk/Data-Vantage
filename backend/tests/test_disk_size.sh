@@ -17,6 +17,7 @@ set -euo pipefail
 BINARY="${1:-./build/data-vantage}"
 PORT=18787
 API="http://127.0.0.1:${PORT}/api"
+TMP_BASE="${TMPDIR:-/tmp}"
 TMPDIR=""
 SERVER_PID=""
 
@@ -35,7 +36,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ok()   { echo "PASS: $*"; }
 
 # --- setup temp files ------------------------------------------------------
-TMPDIR=$(mktemp -d)
+TMPDIR=$(mktemp -d "$TMP_BASE/data-vantage.XXXXXX")
 dd if=/dev/urandom of="$TMPDIR/file_a" bs=1 count=1000 2>/dev/null
 dd if=/dev/urandom of="$TMPDIR/file_b" bs=1 count=5000 2>/dev/null
 mkdir "$TMPDIR/subdir"

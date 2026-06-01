@@ -93,8 +93,11 @@ export function Duplicates() {
     if (!scanId) {
       getAllScans()
         .then((scans) => {
-          if (scans.length > 0) {
-            navigate(`/duplicates/${scans[0].scanId}`, { replace: true });
+          const latestCompleted = scans.find(
+            (scan) => !scan.status || scan.status === "completed",
+          );
+          if (latestCompleted) {
+            navigate(`/duplicates/${latestCompleted.scanId}`, { replace: true });
           } else {
             setLoading(false);
           }

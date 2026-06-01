@@ -17,6 +17,7 @@ export function useScan() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollFailuresRef = useRef(0);
 
   const loadScans = useCallback(async () => {
     try {
@@ -39,6 +40,8 @@ export function useScan() {
   const startNewScan = useCallback(async (path: string, minSize = 0) => {
     setIsLoading(true);
     setError(null);
+    setProgress(null);
+    pollFailuresRef.current = 0;
     try {
       const result = await startScan(path, undefined, minSize);
       setActiveScanId(result.scanId);
@@ -70,7 +73,16 @@ export function useScan() {
     const poll = async () => {
       try {
         const p = await getScanProgress(activeScanId);
+        pollFailuresRef.current = 0;
         setProgress(p);
+
+        if (p.status === "failed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setActiveScanId(null);
+          setError("Scan failed before insights could be saved. Check the path and try a smaller folder if macOS denied access.");
+          loadScans();
+          return;
+        }
 
         if (!p.isScanning) {
           // Scan completed
@@ -79,8 +91,18 @@ export function useScan() {
           loadScan(activeScanId);
           loadScans();
         }
-      } catch {
-        // Scan might not be started yet, retry
+      } catch (err) {
+        pollFailuresRef.current += 1;
+        if (pollFailuresRef.current >= 5) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setActiveScanId(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Lost connection to the backend while scanning.",
+          );
+          loadScans();
+        }
       }
     };
 

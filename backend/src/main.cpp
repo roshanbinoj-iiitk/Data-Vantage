@@ -51,17 +51,28 @@ int main(int argc, char *argv[])
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+#ifndef _WIN32
+    std::signal(SIGPIPE, SIG_IGN); // Prevent macOS from killing the server on closed sockets
+#endif
 
     try
     {
         g_server = std::make_unique<ApiServer>(host, port, web_root);
+        std::cout << "Starting server..." << std::endl;
         g_server->start();
+        std::cout << "Server start() returned normally." << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
+        std::cerr << "Fatal error in main: " << e.what() << std::endl;
+        return 1;
+    }
+    catch (...)
+    {
+        std::cerr << "Unknown fatal error in main" << std::endl;
         return 1;
     }
 
+    std::cout << "Backend process exiting with code 0." << std::endl;
     return 0;
 }

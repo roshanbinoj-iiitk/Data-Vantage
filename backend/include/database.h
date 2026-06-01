@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <mutex>
 #include "scanner.h"
 
 struct DuplicateGroup
@@ -26,6 +27,7 @@ struct ScanResult
     uint64_t wasted_space;
     std::string scan_date;
     double scan_duration;
+    std::string status;
 };
 
 struct FileTypeStats
@@ -47,6 +49,7 @@ public:
     // Scan operations
     int64_t create_scan(const std::string &root_path);
     void complete_scan(int64_t scan_id, const ScanResult &result);
+    void fail_scan(int64_t scan_id);
     ScanResult get_scan(int64_t scan_id);
     std::vector<ScanResult> get_all_scans();
     void delete_scan(int64_t scan_id);
@@ -70,4 +73,5 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+    mutable std::mutex m_mutex;
 };

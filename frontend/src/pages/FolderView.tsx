@@ -55,8 +55,11 @@ export function FolderView() {
     if (!scanId) {
       getAllScans()
         .then((scans) => {
-          if (scans.length > 0) {
-            navigate(`/files/${scans[0].scanId}`, { replace: true });
+          const latestCompleted = scans.find(
+            (scan) => !scan.status || scan.status === "completed",
+          );
+          if (latestCompleted) {
+            navigate(`/files/${latestCompleted.scanId}`, { replace: true });
           } else {
             setLoading(false);
           }
@@ -83,10 +86,14 @@ export function FolderView() {
 
   useEffect(() => {
     if (!scanId) return;
-    const id = parseInt(scanId);
+    const id = parseInt(scanId, 10);
+    setCurrentParentId(0);
+    setBreadcrumbs([]);
+    setGlobalSearch("");
+    setIsSearching(false);
     getScan(id).then(setScan).catch(console.error);
     loadFiles(0);
-  }, [scanId, loadFiles]);
+  }, [scanId, loadFiles, setGlobalSearch, setIsSearching]);
 
   const handleDirectoryClick = (file: FileEntry) => {
     setCurrentParentId(file.id);

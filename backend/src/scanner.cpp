@@ -83,151 +83,165 @@ void Scanner::scan_recursive(const std::string &path, int64_t parent_id)
     if (m_stop_requested.load())
         return;
 
-    std::error_code ec;
-    for (auto &entry : fs::directory_iterator(path, fs::directory_options::skip_permission_denied, ec))
-    {
-        if (m_stop_requested.load())
-            return;
+    std::vector<std::pair<std::string, int64_t>> subdirs;
 
-        try
+    try
+    {
+        std::error_code ec;
+        for (auto &entry : fs::directory_iterator(path, fs::directory_options::skip_permission_denied, ec))
         {
-            // Skip symlinks entirely — they can cause double counting and
-            // infinite loops with circular links.
-            if (entry.is_symlink(ec))
+            if (m_stop_requested.load())
+                return;
+
+            try
+            {
+                // Skip symlinks entirely — they can cause double counting and
+                // infinite loops with circular links.
+                if (entry.is_symlink(ec))
+                {
+                    m_skipped_files++;
+                    continue;
+                }
+
+                FileEntry fe;
+                fe.path = entry.path().string();
+                fe.name = entry.path().filename().string();
+                fe.is_directory = entry.is_directory(ec);
+                fe.parent_id = parent_id;
+
+                if (fe.is_directory)
+                {
+                    // Use stat to get the inode; skip if we already visited
+                    // this directory (possible via bind mounts).
+                    struct stat st;
+                    if (::stat(fe.path.c_str(), &st) == 0)
+                    {
+                        auto key = std::make_pair(static_cast<uint64_t>(st.st_dev),
+                                                  static_cast<uint64_t>(st.st_ino));
+                        std::lock_guard<std::mutex> lock(m_inode_mutex);
+                        if (!m_visited_inodes.insert(key).second)
+                        {
+                            // Already visited this directory inode
+                            m_skipped_files++;
+                            continue;
+                        }
+                    }
+
+                    fe.extension = "";
+                    fe.size = 0;
+                    fe.modified_time = 0;
+
+                    {
+                        std::lock_guard<std::mutex> lock(m_mutex);
+                        fe.id = m_next_id++;
+                        m_files.push_back(fe);
+                    }
+
+                    m_dirs_scanned++;
+
+                    // Defer recursion to avoid holding directory iterators open
+                    subdirs.push_back({fe.path, fe.id});
+                }
+                else if (entry.is_regular_file(ec))
+                {
+                    // Use lstat to detect hard links — only count a file once
+                    // per unique (device, inode) pair.  lstat avoids following
+                    // symlinks (they are already skipped above).
+                    struct stat st;
+                    if (::lstat(fe.path.c_str(), &st) != 0)
+                    {
+                        // Cannot stat file — permission error or race condition
+                        m_skipped_files++;
+                        continue;
+                    }
+
+                    auto key = std::make_pair(static_cast<uint64_t>(st.st_dev),
+                                              static_cast<uint64_t>(st.st_ino));
+                    {
+                        std::lock_guard<std::mutex> lock(m_inode_mutex);
+                        if (!m_visited_inodes.insert(key).second)
+                        {
+                            // Hard link to an already-counted file — skip
+                            m_skipped_files++;
+                            continue;
+                        }
+                    }
+
+                    fe.extension = entry.path().extension().string();
+#if defined(__linux__) || defined(__APPLE__)
+                    // Actual disk consumption: st_blocks is in 512-byte units (POSIX).
+                    fe.size = static_cast<uint64_t>(st.st_blocks) * 512;
+#else
+                    // Fallback: apparent file size on platforms without st_blocks.
+                    fe.size = static_cast<uint64_t>(st.st_size);
+#endif
+                    // Exclude files smaller than minimum size threshold
+                    if (m_min_size > 0 && fe.size < m_min_size)
+                    {
+                        m_skipped_files++;
+                        continue;
+                    }
+                    auto ftime = entry.last_write_time(ec);
+                    if (!ec)
+                    {
+                        fe.modified_time = std::chrono::duration_cast<std::chrono::seconds>(
+                                               ftime.time_since_epoch())
+                                               .count();
+                    }
+                    else
+                    {
+                        fe.modified_time = static_cast<uint64_t>(st.st_mtime);
+                    }
+
+                    {
+                        std::lock_guard<std::mutex> lock(m_mutex);
+                        fe.id = m_next_id++;
+                        m_files.push_back(fe);
+                    }
+
+                    m_files_scanned++;
+                    m_total_size += fe.size;
+
+                    // Report progress every 100 files
+                    if (m_callback && (m_files_scanned.load() % 100 == 0))
+                    {
+                        m_callback(get_progress());
+                    }
+                }
+            }
+            catch (const fs::filesystem_error &)
             {
                 m_skipped_files++;
                 continue;
             }
-
-            FileEntry fe;
-            fe.path = entry.path().string();
-            fe.name = entry.path().filename().string();
-            fe.is_directory = entry.is_directory(ec);
-            fe.parent_id = parent_id;
-
-            if (fe.is_directory)
+            catch (const std::exception &)
             {
-                // Use stat to get the inode; skip if we already visited
-                // this directory (possible via bind mounts).
-                struct stat st;
-                if (::stat(fe.path.c_str(), &st) == 0)
-                {
-                    auto key = std::make_pair(static_cast<uint64_t>(st.st_dev),
-                                              static_cast<uint64_t>(st.st_ino));
-                    std::lock_guard<std::mutex> lock(m_inode_mutex);
-                    if (!m_visited_inodes.insert(key).second)
-                    {
-                        // Already visited this directory inode
-                        m_skipped_files++;
-                        continue;
-                    }
-                }
-
-                fe.extension = "";
-                fe.size = 0;
-                fe.modified_time = 0;
-
-                {
-                    std::lock_guard<std::mutex> lock(m_mutex);
-                    fe.id = m_next_id++;
-                    m_files.push_back(fe);
-                }
-
-                m_dirs_scanned++;
-
-                {
-                    std::lock_guard<std::mutex> lock(m_path_mutex);
-                    m_current_path = fe.path;
-                }
-
-                scan_recursive(fe.path, fe.id);
+                m_skipped_files++;
+                continue;
             }
-            else if (entry.is_regular_file(ec))
-            {
-                // Use lstat to detect hard links — only count a file once
-                // per unique (device, inode) pair.  lstat avoids following
-                // symlinks (they are already skipped above).
-                struct stat st;
-                if (::lstat(fe.path.c_str(), &st) != 0)
-                {
-                    // Cannot stat file — permission error or race condition
-                    m_skipped_files++;
-                    continue;
-                }
-
-                auto key = std::make_pair(static_cast<uint64_t>(st.st_dev),
-                                          static_cast<uint64_t>(st.st_ino));
-                {
-                    std::lock_guard<std::mutex> lock(m_inode_mutex);
-                    if (!m_visited_inodes.insert(key).second)
-                    {
-                        // Hard link to an already-counted file — skip
-                        m_skipped_files++;
-                        continue;
-                    }
-                }
-
-                fe.extension = entry.path().extension().string();
-#if defined(__linux__) || defined(__APPLE__)
-                // Actual disk consumption: st_blocks is in 512-byte units (POSIX).
-                fe.size = static_cast<uint64_t>(st.st_blocks) * 512;
-#else
-                // Fallback: apparent file size on platforms without st_blocks.
-                fe.size = static_cast<uint64_t>(st.st_size);
-#endif
-                // Exclude files smaller than minimum size threshold
-                if (m_min_size > 0 && fe.size < m_min_size)
-                {
-                    m_skipped_files++;
-                    continue;
-                }
-                auto ftime = entry.last_write_time(ec);
-                if (!ec)
-                {
-                    fe.modified_time = std::chrono::duration_cast<std::chrono::seconds>(
-                                           ftime.time_since_epoch())
-                                           .count();
-                }
-                else
-                {
-                    fe.modified_time = static_cast<uint64_t>(st.st_mtime);
-                }
-
-                {
-                    std::lock_guard<std::mutex> lock(m_mutex);
-                    fe.id = m_next_id++;
-                    m_files.push_back(fe);
-                }
-
-                m_files_scanned++;
-                m_total_size += fe.size;
-
-                // Report progress every 100 files
-                if (m_callback && (m_files_scanned.load() % 100 == 0))
-                {
-                    m_callback(get_progress());
-                }
-            }
-            // Ignore other file types (sockets, FIFOs, block devices, etc.)
         }
-        catch (const fs::filesystem_error &)
+
+        if (ec)
         {
-            // Permission denied or other filesystem error — skip gracefully
             m_skipped_files++;
-            continue;
-        }
-        catch (const std::exception &)
-        {
-            // Any other error — skip gracefully
-            m_skipped_files++;
-            continue;
         }
     }
-
-    if (ec)
+    catch (const std::exception &)
     {
-        // directory_iterator failed for this path (permission denied, etc.)
         m_skipped_files++;
+    }
+
+    // Now recurse into subdirectories after the directory iterator is closed
+    for (const auto &subdir : subdirs)
+    {
+        if (m_stop_requested.load())
+            break;
+
+        {
+            std::lock_guard<std::mutex> lock(m_path_mutex);
+            m_current_path = subdir.first;
+        }
+        scan_recursive(subdir.first, subdir.second);
     }
 }
 

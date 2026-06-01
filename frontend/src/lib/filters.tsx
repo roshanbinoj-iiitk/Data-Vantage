@@ -1,5 +1,6 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -90,16 +91,26 @@ export function FiltersProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [state]);
 
-  const setGlobalSearch = (s: string) =>
-    setState((p) => ({ ...p, globalSearch: s }));
-  const setIsSearching = (b: boolean) =>
-    setState((p) => ({ ...p, isSearching: b }));
-  const setDuplicates = (s: Partial<DuplicatesState>) =>
-    setState((p) => ({ ...p, duplicates: { ...p.duplicates, ...s } }));
-  const setFileTable = (s: Partial<FileTableState>) =>
-    setState((p) => ({ ...p, fileTable: { ...p.fileTable, ...s } }));
+  const setGlobalSearch = useCallback(
+    (s: string) => setState((p) => ({ ...p, globalSearch: s })),
+    [],
+  );
+  const setIsSearching = useCallback(
+    (b: boolean) => setState((p) => ({ ...p, isSearching: b })),
+    [],
+  );
+  const setDuplicates = useCallback(
+    (s: Partial<DuplicatesState>) =>
+      setState((p) => ({ ...p, duplicates: { ...p.duplicates, ...s } })),
+    [],
+  );
+  const setFileTable = useCallback(
+    (s: Partial<FileTableState>) =>
+      setState((p) => ({ ...p, fileTable: { ...p.fileTable, ...s } })),
+    [],
+  );
 
-  const reset = () => setState(defaultState);
+  const reset = useCallback(() => setState(defaultState), []);
 
   const value = useMemo(
     () => ({

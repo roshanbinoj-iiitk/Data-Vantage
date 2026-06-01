@@ -28,6 +28,7 @@ export interface ScanResult {
   wastedSpace: number;
   scanDate: string;
   scanDuration: number;
+  status?: "running" | "completed" | "failed";
 }
 
 export interface ScanProgress {
@@ -67,12 +68,21 @@ export interface FileTypeStats {
 // ---- API Functions ----
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      ...options,
+    });
+  } catch (err) {
+    throw new Error(
+      err instanceof TypeError
+        ? "Cannot reach the Data-Vantage backend. Make sure it is running on port 8000."
+        : "Network request failed",
+    );
+  }
 
   if (!response.ok) {
     const error = await response

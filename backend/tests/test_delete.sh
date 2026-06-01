@@ -20,6 +20,7 @@ set -euo pipefail
 BINARY="${1:-./build/data-vantage}"
 PORT=18788
 API="http://127.0.0.1:${PORT}/api"
+TMP_BASE="${TMPDIR:-/tmp}"
 TMPDIR=""
 SERVER_PID=""
 
@@ -37,7 +38,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 ok()   { echo "PASS: $*"; }
 
 # --- setup temp files ------------------------------------------------------
-TMPDIR=$(mktemp -d)
+TMPDIR=$(mktemp -d "$TMP_BASE/data-vantage.XXXXXX")
 
 # Create duplicate files (identical content)
 echo "duplicate content here" > "$TMPDIR/dup1.txt"
@@ -48,7 +49,7 @@ cp "$TMPDIR/dup1.txt" "$TMPDIR/dup3.txt"
 echo "unique content" > "$TMPDIR/unique.txt"
 
 # Create a file outside scan root for path-traversal test
-OUTSIDE_FILE=$(mktemp)
+OUTSIDE_FILE=$(mktemp "$TMP_BASE/data-vantage-outside.XXXXXX")
 echo "outside" > "$OUTSIDE_FILE"
 
 # --- start server ----------------------------------------------------------

@@ -51,11 +51,24 @@ export function Dashboard() {
 
   // Load stats for the most recent scan
   useEffect(() => {
-    const latestScan = currentScan || (scans.length > 0 ? scans[0] : null);
+    const completedScans = scans.filter(
+      (scan) => !scan.status || scan.status === "completed",
+    );
+    const latestScan =
+      currentScan && (!currentScan.status || currentScan.status === "completed")
+        ? currentScan
+        : completedScans.length > 0
+          ? completedScans[0]
+          : null;
     if (latestScan && latestScan.scanId > 0) {
       getFileTypeStats(latestScan.scanId)
         .then(setFileTypeStats)
-        .catch(console.error);
+        .catch((err) => {
+          console.error(err);
+          setFileTypeStats([]);
+        });
+    } else {
+      setFileTypeStats([]);
     }
   }, [currentScan, scans]);
 
@@ -89,7 +102,15 @@ export function Dashboard() {
     loadScans();
   };
 
-  const latestScan = currentScan || (scans.length > 0 ? scans[0] : null);
+  const completedScans = scans.filter(
+    (scan) => !scan.status || scan.status === "completed",
+  );
+  const latestScan =
+    currentScan && (!currentScan.status || currentScan.status === "completed")
+      ? currentScan
+      : completedScans.length > 0
+        ? completedScans[0]
+        : null;
 
   return (
     <motion.div
@@ -266,8 +287,13 @@ export function Dashboard() {
                     className="flex items-center justify-between p-3 rounded-md bg-muted/50 border border-transparent hover:border-border transition-colors group"
                   >
                     <div
-                      className="flex-1 cursor-pointer"
+                      className={
+                        !scan.status || scan.status === "completed"
+                          ? "flex-1 cursor-pointer"
+                          : "flex-1"
+                      }
                       onClick={() => {
+                        if (scan.status && scan.status !== "completed") return;
                         loadScan(scan.scanId);
                         navigate(`/files/${scan.scanId}`);
                       }}
@@ -279,6 +305,9 @@ export function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {scan.status && scan.status !== "completed" && (
+                        <Badge variant="secondary">{scan.status}</Badge>
+                      )}
                       {scan.duplicateGroups > 0 && (
                         <Badge
                           variant="destructive"
