@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts((prev) => [...prev, { id, type, message }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, type === "error" ? 8000 : 4000);
   }, []);
 
   const removeToast = useCallback((id: number) => {
@@ -40,7 +40,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast: addToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm">
+      <div
+        className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm"
+        role="status"
+        aria-live="polite"
+      >
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div
@@ -63,6 +67,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <p className="text-sm flex-1">{t.message}</p>
               <button
                 onClick={() => removeToast(t.id)}
+                aria-label="Dismiss notification"
                 className="text-muted-foreground hover:text-foreground shrink-0"
               >
                 <X className="h-4 w-4" />

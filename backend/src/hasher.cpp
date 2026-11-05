@@ -1,164 +1,67 @@
 #include "hasher.h"
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <cstring>
-#include <array>
 
-// ============================================================================
-// Embedded xxHash implementation (xxHash64) - BSD 2-Clause License
-// Based on xxHash by Yann Collet
-// ============================================================================
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <vector>
 
 namespace
 {
-
-    static const uint64_t PRIME64_1 = 0x9E3779B185EBCA87ULL;
-    static const uint64_t PRIME64_2 = 0x14DEF9DEA2F79CD5ULL;
-    static const uint64_t PRIME64_3 = 0x165667B19E3779F9ULL;
-    static const uint64_t PRIME64_4 = 0x85EBCA77C2B2AE63ULL;
-    static const uint64_t PRIME64_5 = 0x27D4EB2F165667C5ULL;
-
-    inline uint64_t rotl64(uint64_t x, int r)
+    struct FileCloser
     {
-        return (x << r) | (x >> (64 - r));
+        void operator()(FILE *f) const { std::fclose(f); }
+    };
+    using FilePtr = std::unique_ptr<FILE, FileCloser>;
+
+    FilePtr open_file(const std::string &path)
+    {
+        return FilePtr(std::fopen(path.c_str(), "rb"));
     }
 
-    inline uint64_t xxh64_round(uint64_t acc, uint64_t input)
+    std::string to_hex(const XXH128_hash_t &h)
     {
-        acc += input * PRIME64_2;
-        acc = rotl64(acc, 31);
-        acc *= PRIME64_1;
-        return acc;
+        XXH128_canonical_t canon;
+        XXH128_canonicalFromHash(&canon, h);
+        static const char digits[] = "0123456789abcdef";
+        std::string out;
+        out.reserve(32);
+        for (unsigned char byte : canon.digest)
+        {
+            out += digits[byte >> 4];
+            out += digits[byte & 0xF];
+        }
+        return out;
     }
 
-    inline uint64_t xxh64_merge_round(uint64_t acc, uint64_t val)
+    struct StateDeleter
     {
-        val = xxh64_round(0, val);
-        acc ^= val;
-        acc = acc * PRIME64_1 + PRIME64_4;
-        return acc;
-    }
+        void operator()(XXH3_state_t *s) const { XXH3_freeState(s); }
+    };
+} // namespace
 
-    uint64_t xxh64(const void *input, size_t len, uint64_t seed = 0)
-    {
-        const uint8_t *p = (const uint8_t *)input;
-        const uint8_t *end = p + len;
-        uint64_t h64;
-
-        if (len >= 32)
-        {
-            const uint8_t *limit = end - 32;
-            uint64_t v1 = seed + PRIME64_1 + PRIME64_2;
-            uint64_t v2 = seed + PRIME64_2;
-            uint64_t v3 = seed + 0;
-            uint64_t v4 = seed - PRIME64_1;
-
-            do
-            {
-                uint64_t k1;
-                memcpy(&k1, p, 8);
-                p += 8;
-                v1 = xxh64_round(v1, k1);
-                memcpy(&k1, p, 8);
-                p += 8;
-                v2 = xxh64_round(v2, k1);
-                memcpy(&k1, p, 8);
-                p += 8;
-                v3 = xxh64_round(v3, k1);
-                memcpy(&k1, p, 8);
-                p += 8;
-                v4 = xxh64_round(v4, k1);
-            } while (p <= limit);
-
-            h64 = rotl64(v1, 1) + rotl64(v2, 7) + rotl64(v3, 12) + rotl64(v4, 18);
-            h64 = xxh64_merge_round(h64, v1);
-            h64 = xxh64_merge_round(h64, v2);
-            h64 = xxh64_merge_round(h64, v3);
-            h64 = xxh64_merge_round(h64, v4);
-        }
-        else
-        {
-            h64 = seed + PRIME64_5;
-        }
-
-        h64 += (uint64_t)len;
-
-        while (p + 8 <= end)
-        {
-            uint64_t k1;
-            memcpy(&k1, p, 8);
-            k1 = xxh64_round(0, k1);
-            h64 ^= k1;
-            h64 = rotl64(h64, 27) * PRIME64_1 + PRIME64_4;
-            p += 8;
-        }
-
-        while (p + 4 <= end)
-        {
-            uint32_t k1;
-            memcpy(&k1, p, 4);
-            h64 ^= (uint64_t)k1 * PRIME64_1;
-            h64 = rotl64(h64, 23) * PRIME64_2 + PRIME64_3;
-            p += 4;
-        }
-
-        while (p < end)
-        {
-            h64 ^= (*p) * PRIME64_5;
-            h64 = rotl64(h64, 11) * PRIME64_1;
-            p++;
-        }
-
-        h64 ^= h64 >> 33;
-        h64 *= PRIME64_2;
-        h64 ^= h64 >> 29;
-        h64 *= PRIME64_3;
-        h64 ^= h64 >> 32;
-
-        return h64;
-    }
-
-    std::string uint64_to_hex(uint64_t value)
-    {
-        std::ostringstream oss;
-        oss << std::hex << std::setfill('0') << std::setw(16) << value;
-        return oss.str();
-    }
-
-} // anonymous namespace
-
-// ============================================================================
-// Hasher implementation
-// ============================================================================
-
-std::string Hasher::hash_file(const std::string &filepath, uint64_t /*file_size*/)
+std::string Hasher::hash_file(const std::string &filepath)
 {
-    std::ifstream file(filepath, std::ios::binary);
-    if (!file.is_open())
+    FilePtr file = open_file(filepath);
+    if (!file)
         return "";
 
-    // For streaming xxHash, we process in chunks and combine
-    std::array<uint8_t, BUFFER_SIZE> buffer;
-    uint64_t h1 = 0, h2 = 0;
-    uint64_t total_read = 0;
-    size_t chunk_count = 0;
+    std::unique_ptr<XXH3_state_t, StateDeleter> state(XXH3_createState());
+    if (!state || XXH3_128bits_reset(state.get()) == XXH_ERROR)
+        return "";
 
-    while (file.read(reinterpret_cast<char *>(buffer.data()), BUFFER_SIZE) || file.gcount() > 0)
+    std::vector<char> buffer(BUFFER_SIZE);
+    size_t n;
+    while ((n = std::fread(buffer.data(), 1, buffer.size(), file.get())) > 0)
     {
-        size_t bytes_read = static_cast<size_t>(file.gcount());
-        uint64_t chunk_hash = xxh64(buffer.data(), bytes_read, chunk_count);
-        h1 ^= chunk_hash;
-        h2 += chunk_hash;
-        total_read += bytes_read;
-        chunk_count++;
-        if (file.eof())
-            break;
+        if (XXH3_128bits_update(state.get(), buffer.data(), n) == XXH_ERROR)
+            return "";
     }
-
-    // Combine hashes with total size for final hash
-    uint64_t final_hash = xxh64(&h1, sizeof(h1), h2) ^ xxh64(&total_read, sizeof(total_read), 0);
-    return uint64_to_hex(final_hash);
+    if (std::ferror(file.get()))
+        return "";
+    return to_hex(XXH3_128bits_digest(state.get()));
 }
 
 std::string Hasher::quick_hash(const std::string &filepath, uint64_t file_size)
@@ -166,36 +69,45 @@ std::string Hasher::quick_hash(const std::string &filepath, uint64_t file_size)
     if (file_size == 0)
         return "empty";
 
-    std::ifstream file(filepath, std::ios::binary);
-    if (!file.is_open())
+    FilePtr file = open_file(filepath);
+    if (!file)
         return "";
 
-    std::array<uint8_t, QUICK_HASH_SIZE> buffer;
-    uint64_t h = 0;
+    std::unique_ptr<XXH3_state_t, StateDeleter> state(XXH3_createState());
+    if (!state || XXH3_128bits_reset(state.get()) == XXH_ERROR)
+        return "";
 
-    // Hash first 4KB
-    file.read(reinterpret_cast<char *>(buffer.data()), QUICK_HASH_SIZE);
-    size_t bytes_read = static_cast<size_t>(file.gcount());
-    h = xxh64(buffer.data(), bytes_read, 0);
+    char buffer[QUICK_HASH_SIZE];
+    size_t n = std::fread(buffer, 1, sizeof(buffer), file.get());
+    XXH3_128bits_update(state.get(), buffer, n);
 
-    // Hash last 4KB if file is larger
     if (file_size > QUICK_HASH_SIZE)
     {
-        file.seekg(-static_cast<std::streamoff>(QUICK_HASH_SIZE), std::ios::end);
-        file.read(reinterpret_cast<char *>(buffer.data()), QUICK_HASH_SIZE);
-        bytes_read = static_cast<size_t>(file.gcount());
-        h ^= xxh64(buffer.data(), bytes_read, 1);
+        if (std::fseek(file.get(), -static_cast<long>(QUICK_HASH_SIZE), SEEK_END) == 0)
+        {
+            n = std::fread(buffer, 1, sizeof(buffer), file.get());
+            XXH3_128bits_update(state.get(), buffer, n);
+        }
     }
-
-    // Mix in file size
-    h ^= xxh64(&file_size, sizeof(file_size), 2);
-
-    return uint64_to_hex(h);
+    XXH3_128bits_update(state.get(), &file_size, sizeof(file_size));
+    return to_hex(XXH3_128bits_digest(state.get()));
 }
 
-std::string Hasher::sha256_file(const std::string &filepath)
+bool Hasher::files_identical(const std::string &a, const std::string &b)
 {
-    // Simplified - use xxHash as a stand-in for full verification
-    // In production, link against OpenSSL for real SHA256
-    return hash_file(filepath);
+    FilePtr fa = open_file(a);
+    FilePtr fb = open_file(b);
+    if (!fa || !fb)
+        return false;
+
+    std::vector<char> ba(BUFFER_SIZE), bb(BUFFER_SIZE);
+    while (true)
+    {
+        const size_t na = std::fread(ba.data(), 1, ba.size(), fa.get());
+        const size_t nb = std::fread(bb.data(), 1, bb.size(), fb.get());
+        if (na != nb || std::memcmp(ba.data(), bb.data(), na) != 0)
+            return false;
+        if (na == 0)
+            return !std::ferror(fa.get()) && !std::ferror(fb.get());
+    }
 }

@@ -6,7 +6,7 @@ import {
   Trash2,
   Shield,
 } from "lucide-react";
-import { type DuplicateGroup } from "@/api/backend";
+import { type DuplicateGroup, type FileEntry } from "@/api/backend";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,15 @@ import { formatBytes } from "@/lib/utils";
 interface DuplicateGroupCardProps {
   group: DuplicateGroup;
   index: number;
-  onDeleteFile?: (path: string) => void;
-  onDeleteGroup?: (hash: string, keepPath: string) => void;
+  onDeleteFile?: (file: FileEntry) => void;
+  onKeep?: (group: DuplicateGroup, keep: FileEntry) => void;
 }
 
 export function DuplicateGroupCard({
   group,
   index,
   onDeleteFile,
-  onDeleteGroup,
+  onKeep,
 }: DuplicateGroupCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -37,6 +37,8 @@ export function DuplicateGroupCard({
               size="icon"
               onClick={() => setIsExpanded(!isExpanded)}
               className="h-8 w-8"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? "Collapse group" : "Expand group"}
             >
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4" />
@@ -62,9 +64,9 @@ export function DuplicateGroupCard({
       {isExpanded && (
         <CardContent className="pt-0">
           <div className="space-y-2">
-            {group.files.map((file, i) => (
+            {group.files.map((file) => (
               <div
-                key={file.id || i}
+                key={file.id}
                 className="flex items-center gap-3 p-3 rounded-md bg-muted/40 hover:bg-muted/70 transition-colors border border-transparent hover:border-border"
               >
                 <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -80,13 +82,13 @@ export function DuplicateGroupCard({
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  {onDeleteGroup && group.fileCount > 1 && (
+                  {onKeep && group.fileCount > 1 && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs px-2"
-                      onClick={() => onDeleteGroup(group.hash, file.path)}
-                      title="Keep this file, delete all other copies"
+                      onClick={() => onKeep(group, file)}
+                      title="Keep this file, move all other copies to the trash"
                     >
                       <Shield className="h-3 w-3 mr-1" />
                       Keep
@@ -97,8 +99,9 @@ export function DuplicateGroupCard({
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs px-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                      onClick={() => onDeleteFile(file.path)}
-                      title="Delete this file"
+                      onClick={() => onDeleteFile(file)}
+                      title="Move this file to the trash"
+                      aria-label={`Move ${file.name} to trash`}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>

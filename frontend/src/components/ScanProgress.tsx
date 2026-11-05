@@ -4,12 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  formatBytes,
-  formatNumber,
-  formatDuration,
-  truncatePath,
-} from "@/lib/utils";
+import { formatBytes, formatNumber, formatDuration } from "@/lib/utils";
 
 interface ScanProgressProps {
   progress: ScanProgress;
@@ -19,6 +14,7 @@ interface ScanProgressProps {
 function statusLabel(progress: ScanProgress): string {
   if (!progress.isScanning) return "Completed";
   if (progress.status === "hashing") return "Hashing duplicates…";
+  if (progress.status === "saving") return "Saving results…";
   return "Scanning…";
 }
 
@@ -26,13 +22,14 @@ function statusVariant(
   progress: ScanProgress,
 ): "default" | "success" | "secondary" {
   if (!progress.isScanning) return "success";
-  if (progress.status === "hashing") return "secondary";
+  if (progress.status === "hashing" || progress.status === "saving") return "secondary";
   return "default";
 }
 
 /** Compute a synthetic 0-100 progress value used by the bar. */
 function computeProgressValue(progress: ScanProgress): number {
   if (!progress.isScanning) return 100;
+  if (progress.status === "saving") return 97;
   if (progress.status === "hashing") {
     const eta = progress.estimatedSecondsRemaining;
     if (eta > 0 && progress.elapsedSeconds > 0) {
@@ -78,6 +75,8 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
                 size="icon"
                 onClick={onCancel}
                 className="h-8 w-8"
+                aria-label="Stop scan"
+                title="Stop scan"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -157,7 +156,7 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
         {progress.skippedFiles > 0 && (
           <div className="text-sm text-yellow-600 dark:text-yellow-400">
             {formatNumber(progress.skippedFiles)} files skipped (symlinks, hard
-            links, or permission errors)
+            links, files under the size limit, or unreadable entries)
           </div>
         )}
 
@@ -176,10 +175,13 @@ export function ScanProgressCard({ progress, onCancel }: ScanProgressProps) {
         {progress.currentPath && progress.isScanning && (
           <div className="space-y-1.5 pt-2">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Current file:
+              Current folder:
             </div>
-            <div className="text-xs font-mono truncate bg-primary/5 dark:bg-primary/10 text-primary p-2.5 rounded-lg border border-primary/10">
-              {truncatePath(progress.currentPath, 80)}
+            <div
+              className="text-xs font-mono truncate bg-primary/5 dark:bg-primary/10 text-primary p-2.5 rounded-lg border border-primary/10"
+              title={progress.currentPath}
+            >
+              {progress.currentPath}
             </div>
           </div>
         )}

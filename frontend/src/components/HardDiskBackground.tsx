@@ -1,11 +1,6 @@
 import { useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import {
-  OrbitControls,
-  Environment,
-  ContactShadows,
-  RoundedBox,
-} from "@react-three/drei";
+import { OrbitControls, ContactShadows, RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 
 /* Reused HDD parts (kept intact to preserve look/behavior) */
@@ -93,10 +88,10 @@ function SpindleHub() {
   );
 }
 
-function RotatingAssembly() {
+function RotatingAssembly({ animate }: { animate: boolean }) {
   const ref = useRef<THREE.Group>(null!);
   useFrame((_state, delta) => {
-    ref.current.rotation.y -= delta * 6.0;
+    if (animate) ref.current.rotation.y -= delta * 6.0;
   });
   return (
     <group ref={ref} position={[0, 0, 0]}>
@@ -168,11 +163,11 @@ function VoiceCoilShape() {
   );
 }
 
-function ActuatorArm() {
+function ActuatorArm({ animate }: { animate: boolean }) {
   const armRef = useRef<THREE.Group>(null!);
   const pivotPos: [number, number, number] = [2.2, 0.35, 1.8];
   useFrame((state) => {
-    const t = state.clock.elapsedTime;
+    const t = animate ? state.clock.elapsedTime : 0;
     armRef.current.rotation.y = Math.sin(t * 0.5) * 0.08 - 0.3;
   });
   return (
@@ -362,12 +357,12 @@ function ParkingRamp() {
   );
 }
 
-function HardDiskModel() {
+function HardDiskModel({ animate }: { animate: boolean }) {
   return (
     <group rotation={[0.15, 0, 0]} position={[0, -0.5, 0]}>
       <Chassis />
-      <RotatingAssembly />
-      <ActuatorArm />
+      <RotatingAssembly animate={animate} />
+      <ActuatorArm animate={animate} />
       <AirFilter />
       <VoiceCoilMagnets />
       <ParkingRamp />
@@ -375,59 +370,46 @@ function HardDiskModel() {
   );
 }
 
-export function HardDiskBackground() {
+// Loaded lazily from the landing page. Everything is rendered locally: no
+// HDR environment map is downloaded, so the page works offline.
+export default function HardDiskBackground({ animate = true }: { animate?: boolean }) {
   return (
-    <div style={{ width: "100%", height: "100%", background: "#1a1a2e" }}>
+    <div style={{ width: "100%", height: "100%" }}>
       <Canvas
         camera={{ position: [6, 7, 6], fov: 40 }}
         shadows
+        dpr={[1, 1.5]}
+        frameloop={animate ? "always" : "demand"}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.2,
         }}
       >
-        <ambientLight intensity={0.3} />
+        <hemisphereLight args={["#ffffff", "#334", 0.6]} />
+        <ambientLight intensity={0.35} />
         <directionalLight
           position={[5, 10, 5]}
-          intensity={1.5}
+          intensity={1.8}
           castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
         />
-        <directionalLight
-          position={[-5, 5, -3]}
-          intensity={0.5}
-          color="#b0c4ff"
-        />
+        <directionalLight position={[-5, 5, -3]} intensity={0.7} color="#b0c4ff" />
         <pointLight position={[0, 6, 0]} intensity={0.8} color="#fff5e0" />
-        <spotLight
-          position={[-3, 8, 2]}
-          angle={0.4}
-          penumbra={0.5}
-          intensity={1}
-          color="#ffe0b0"
-          castShadow
-        />
+        <spotLight position={[-3, 8, 2]} angle={0.4} penumbra={0.5} intensity={1} color="#ffe0b0" />
 
-        <HardDiskModel />
+        <HardDiskModel animate={animate} />
 
-        <ContactShadows
-          position={[0, -1.2, 0]}
-          opacity={0.6}
-          scale={15}
-          blur={2.5}
-          far={5}
-        />
-        <Environment preset="studio" />
+        <ContactShadows position={[0, -1.2, 0]} opacity={0.6} scale={15} blur={2.5} far={5} frames={1} />
 
         <OrbitControls
           enablePan={true}
           enableZoom={true}
           minDistance={5}
           maxDistance={20}
-          autoRotate
-          autoRotateSpeed={1.5}
+          autoRotate={animate}
+          autoRotateSpeed={1.0}
           target={[0, 0, 0]}
         />
       </Canvas>

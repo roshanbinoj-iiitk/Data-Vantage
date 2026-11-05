@@ -1,10 +1,15 @@
+import { lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
-import { HardDiskBackground } from "@/components/HardDiskBackground";
 import { HardDrive, Files, Copy, Gauge, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { usePrefersReducedMotion } from "@/hooks/use-reduced-motion";
+
+// three.js is large; load it only for the landing page, after first paint.
+const HardDiskBackground = lazy(() => import("@/components/HardDiskBackground"));
 
 export function Landing() {
   const navigate = useNavigate();
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 overflow-hidden">
@@ -16,13 +21,15 @@ export function Landing() {
 
         {/* 3D Background */}
         <div className="absolute inset-0 z-0">
-          <HardDiskBackground />
+          <Suspense fallback={null}>
+            <HardDiskBackground animate={!reducedMotion} />
+          </Suspense>
         </div>
 
         {/* Content */}
         <div className="relative z-10 container mx-auto px-6 text-center">
           <h1 className="text-6xl md:text-8xl font-bold tracking-tighter mb-6">
-            <span className="text-white">Data</span>
+            <span className="text-foreground">Data</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-purple-500">
               {" "}
               Vantage
@@ -36,12 +43,7 @@ export function Landing() {
           <Button
             size="lg"
             className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all text-lg px-8 py-6"
-            onClick={() => {
-              try {
-                localStorage.setItem("data-vantage-launched", "true");
-              } catch (e) {}
-              navigate("/dashboard");
-            }}
+            onClick={() => navigate("/dashboard")}
           >
             Get Started
             <ArrowRight className="ml-2 h-5 w-5" />
@@ -91,12 +93,7 @@ export function Landing() {
             <Button
               size="lg"
               className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg text-lg px-8 py-6"
-              onClick={() => {
-                try {
-                  localStorage.setItem("data-vantage-launched", "true");
-                } catch (e) {}
-                navigate("/dashboard");
-              }}
+              onClick={() => navigate("/dashboard")}
             >
               Launch Dashboard
               <ArrowRight className="ml-2 h-5 w-5" />
@@ -107,7 +104,18 @@ export function Landing() {
 
       {/* Footer */}
       <footer className="py-8 border-t border-border text-center text-muted-foreground text-sm">
-        <p>© 2026 Data Vantage. All rights reserved.</p>
+        <p>
+          Data Vantage is open source, released under the{" "}
+          <a
+            href="https://www.apache.org/licenses/LICENSE-2.0"
+            className="underline underline-offset-4 hover:text-foreground"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Apache License 2.0
+          </a>
+          .
+        </p>
       </footer>
     </div>
   );

@@ -1,21 +1,33 @@
-// Data-Vantage API Client
-// Communicates with the C++ backend REST API
+// Data-Vantage API client for the C++ backend.
 
 const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+
+declare global {
+  interface Window {
+    __DATA_VANTAGE_TOKEN__?: string;
+  }
+}
+
+// The backend injects this token into the page it serves. In development the
+// Vite proxy adds it instead (see vite.config.ts).
+const TOKEN = typeof window !== "undefined" ? window.__DATA_VANTAGE_TOKEN__ : undefined;
 
 // ---- Types ----
 
 export interface FileEntry {
   id: number;
+  parentId: number;
   path: string;
   name: string;
   extension: string;
-  sizeOnDisk: number;
-  modifiedTime: number;
+  size: number; // apparent size in bytes
+  sizeOnDisk: number; // disk usage (folders: sum of their contents)
+  modifiedTime: number; // seconds since the Unix epoch
   isDirectory: boolean;
   hash: string;
-  parentId: number;
 }
+
+export type ScanStatus = "running" | "completed" | "cancelled" | "failed";
 
 export interface ScanResult {
   scanId: number;
@@ -24,11 +36,13 @@ export interface ScanResult {
   totalDirectories: number;
   totalSize: number;
   duplicateGroups: number;
-  duplicateFiles: number;
+  duplicateFiles: number; // all files that belong to a duplicate group
   wastedSpace: number;
   scanDate: string;
   scanDuration: number;
-  status?: "running" | "completed" | "failed";
+  status: ScanStatus;
+  exclusions: string[];
+  minSize: number;
 }
 
 export interface ScanProgress {
@@ -42,10 +56,11 @@ export interface ScanProgress {
   elapsedSeconds: number;
   estimatedSecondsRemaining: number; // -1 if unknown
   filesPerSecond: number;
-  status?: string; // "scanning" | "hashing" | "completed"
+  status: "scanning" | "hashing" | "saving" | ScanStatus;
 }
 
 export interface DuplicateGroup {
+  groupId: number;
   hash: string;
   fileSize: number;
   wastedSpace: number;
@@ -53,9 +68,14 @@ export interface DuplicateGroup {
   files: FileEntry[];
 }
 
+export interface Page<T> {
+  total: number;
+  items: T[];
+}
+
 export interface DuplicateResponse {
   total: number;
-  exclusions?: string[];
+  exclusions: string[];
   groups: DuplicateGroup[];
 }
 
@@ -65,162 +85,172 @@ export interface FileTypeStats {
   totalSize: number;
 }
 
-// ---- API Functions ----
-
-async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${url}`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      ...options,
-    });
-  } catch (err) {
-    throw new Error(
-      err instanceof TypeError
-        ? "Cannot reach the Data-Vantage backend. Make sure it is running on port 8000."
-        : "Network request failed",
-    );
-  }
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `API error: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-// Health check
-export async function checkHealth(): Promise<{
-  status: string;
-  service: string;
-}> {
-  return apiFetch("/health");
-}
-
-// ---- Scan Operations ----
-
-export async function startScan(
-  path: string,
-  exclusions?: string[],
-  minSize?: number,
-): Promise<{ scanId: number; status: string }> {
-  const body: Record<string, unknown> = { path };
-  if (exclusions && exclusions.length > 0) {
-    body.exclusions = exclusions;
-  }
-  if (minSize && minSize > 0) {
-    body.minSize = minSize;
-  }
-  return apiFetch("/scans", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function getScanProgress(scanId: number): Promise<ScanProgress> {
-  return apiFetch(`/scans/${scanId}/progress`);
-}
-
-export async function stopScan(scanId: number): Promise<{ status: string }> {
-  return apiFetch(`/scans/${scanId}/stop`, { method: "POST" });
-}
-
-export async function getScan(scanId: number): Promise<ScanResult> {
-  return apiFetch(`/scans/${scanId}`);
-}
-
-export async function getAllScans(): Promise<ScanResult[]> {
-  return apiFetch("/scans");
-}
-
-export async function deleteScan(scanId: number): Promise<{ status: string }> {
-  return apiFetch(`/scans/${scanId}`, { method: "DELETE" });
-}
-
-// ---- File Operations ----
-
-export async function getFiles(
-  scanId: number,
-  parentId?: number,
-  limit = 100,
-  offset = 0,
-): Promise<FileEntry[]> {
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
-  });
-  if (parentId !== undefined && parentId >= 0) {
-    params.set("parentId", String(parentId));
-  }
-  return apiFetch(`/scans/${scanId}/files?${params}`);
-}
-
-export async function searchFiles(
-  scanId: number,
-  query: string,
-): Promise<FileEntry[]> {
-  return apiFetch(`/scans/${scanId}/search?q=${encodeURIComponent(query)}`);
-}
-
-// ---- Duplicate Operations ----
-
-export async function getDuplicates(
-  scanId: number,
-  limit = 50,
-  offset = 0,
-): Promise<DuplicateResponse> {
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset),
-  });
-  return apiFetch(`/scans/${scanId}/duplicates?${params}`);
-}
-
-// ---- Delete Operations ----
-
 export interface DeleteResult {
   deleted: string[];
-  failed: string[];
+  failed: { path: string; reason: string }[];
   deletedCount: number;
   failedCount: number;
   kept?: string;
 }
 
-export async function deleteFiles(
-  scanId: number,
-  paths: string[],
-): Promise<DeleteResult> {
-  return apiFetch(`/scans/${scanId}/files/delete`, {
-    method: "POST",
-    body: JSON.stringify({ paths }),
-  });
+export type SortOrder = "asc" | "desc";
+export type FileSortField = "name" | "size" | "extension" | "modified";
+export type DuplicateSortField = "wasted" | "size" | "count" | "name" | "path";
+
+// ---- Fetch helper ----
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
 }
 
-export async function deleteDuplicateGroup(
+async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (TOKEN) headers["X-Data-Vantage-Token"] = TOKEN;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers: { ...headers, ...(options.headers as Record<string, string>) },
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError("Cannot reach the Data-Vantage backend. Is it running?", 0);
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}) as { error?: string });
+    throw new ApiError(body.error || `Request failed (${response.status})`, response.status);
+  }
+  return response.json();
+}
+
+function post<T>(url: string, body: unknown = {}): Promise<T> {
+  return apiFetch(url, { method: "POST", body: JSON.stringify(body) });
+}
+
+// ---- Scans ----
+
+export function startScan(
+  path: string,
+  options: { exclusions?: string[]; minSize?: number } = {},
+): Promise<{ scanId: number; status: string }> {
+  const body: Record<string, unknown> = { path };
+  if (options.exclusions) body.exclusions = options.exclusions;
+  if (options.minSize && options.minSize > 0) body.minSize = options.minSize;
+  return post("/scans", body);
+}
+
+export function getScanProgress(scanId: number, signal?: AbortSignal): Promise<ScanProgress> {
+  return apiFetch(`/scans/${scanId}/progress`, { signal });
+}
+
+export function stopScan(scanId: number): Promise<{ status: string }> {
+  return post(`/scans/${scanId}/stop`);
+}
+
+export function getScan(scanId: number, signal?: AbortSignal): Promise<ScanResult> {
+  return apiFetch(`/scans/${scanId}`, { signal });
+}
+
+export function getAllScans(signal?: AbortSignal): Promise<ScanResult[]> {
+  return apiFetch("/scans", { signal });
+}
+
+export function deleteScan(scanId: number): Promise<{ status: string }> {
+  return apiFetch(`/scans/${scanId}`, { method: "DELETE" });
+}
+
+// ---- Files ----
+
+export function getFiles(
   scanId: number,
-  hash: string,
-  keepPath: string,
-): Promise<DeleteResult> {
-  return apiFetch(`/scans/${scanId}/duplicates/delete-group`, {
-    method: "POST",
-    body: JSON.stringify({ hash, keepPath }),
+  params: {
+    parentId: number;
+    sort?: FileSortField;
+    order?: SortOrder;
+    limit?: number;
+    offset?: number;
+  },
+  signal?: AbortSignal,
+): Promise<Page<FileEntry>> {
+  const q = new URLSearchParams({
+    parentId: String(params.parentId),
+    sort: params.sort ?? "name",
+    limit: String(params.limit ?? 200),
+    offset: String(params.offset ?? 0),
   });
+  if (params.order) q.set("order", params.order);
+  return apiFetch(`/scans/${scanId}/files?${q}`, { signal });
+}
+
+export function getFileWithAncestors(
+  scanId: number,
+  fileId: number,
+  signal?: AbortSignal,
+): Promise<{ entry: FileEntry; ancestors: FileEntry[] }> {
+  return apiFetch(`/scans/${scanId}/files/${fileId}`, { signal });
+}
+
+export function searchFiles(scanId: number, query: string, signal?: AbortSignal): Promise<FileEntry[]> {
+  return apiFetch(`/scans/${scanId}/search?q=${encodeURIComponent(query)}`, { signal });
+}
+
+export function openFile(scanId: number, fileId: number): Promise<{ status: string }> {
+  return post(`/scans/${scanId}/files/${fileId}/open`);
+}
+
+export function revealFile(scanId: number, fileId: number): Promise<{ status: string }> {
+  return post(`/scans/${scanId}/files/${fileId}/reveal`);
+}
+
+// ---- Duplicates ----
+
+export function getDuplicates(
+  scanId: number,
+  params: {
+    sort?: DuplicateSortField;
+    order?: SortOrder;
+    filter?: string;
+    limit?: number;
+    offset?: number;
+  },
+  signal?: AbortSignal,
+): Promise<DuplicateResponse> {
+  const q = new URLSearchParams({
+    sort: params.sort ?? "wasted",
+    limit: String(params.limit ?? 20),
+    offset: String(params.offset ?? 0),
+  });
+  if (params.order) q.set("order", params.order);
+  if (params.filter) q.set("q", params.filter);
+  return apiFetch(`/scans/${scanId}/duplicates?${q}`, { signal });
+}
+
+// ---- Delete (files go to the trash) ----
+
+export function deleteFiles(scanId: number, ids: number[]): Promise<DeleteResult> {
+  return post(`/scans/${scanId}/files/delete`, { ids });
+}
+
+export function keepDuplicate(scanId: number, groupId: number, keepId: number): Promise<DeleteResult> {
+  return post(`/scans/${scanId}/duplicates/${groupId}/keep`, { keepId });
 }
 
 // ---- Statistics ----
 
-export async function getFileTypeStats(
-  scanId: number,
-): Promise<FileTypeStats[]> {
-  return apiFetch(`/scans/${scanId}/stats`);
+export function getFileTypeStats(scanId: number, signal?: AbortSignal): Promise<FileTypeStats[]> {
+  return apiFetch(`/scans/${scanId}/stats`, { signal });
 }
 
-// Ask the backend to open a native directory picker and return the selected path (or empty string)
-export async function pickDirectory(): Promise<{ path: string }> {
-  return apiFetch(`/pick-directory`);
+// Asks the backend to show a native folder picker. Returns "" when none is available.
+export function pickDirectory(): Promise<{ path: string }> {
+  return post(`/pick-directory`);
 }

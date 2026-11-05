@@ -1,214 +1,187 @@
-import { useFilters } from "@/lib/filters";
-import { ArrowUpDown, FolderOpen, Trash2 } from "lucide-react";
-import { type FileEntry } from "@/api/backend";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { useEffect, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react";
+import { type FileEntry, type FileSortField, type SortOrder } from "@/api/backend";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatBytes, getFileIcon, cn } from "@/lib/utils";
 
 interface FileTableProps {
   files: FileEntry[];
-  onFileClick?: (file: FileEntry) => void;
+  sortField: FileSortField;
+  sortOrder: SortOrder;
+  onSort: (field: FileSortField) => void;
   onDirectoryClick?: (file: FileEntry) => void;
+  onOpenFile?: (file: FileEntry) => void;
+  onRevealFile?: (file: FileEntry) => void;
   onDeleteFile?: (file: FileEntry) => void;
   showPath?: boolean;
+  // Called when the user scrolls near the end, to load the next page.
+  onEndReached?: () => void;
+  emptyMessage?: string;
 }
 
-type SortField = "name" | "size" | "extension";
-type SortDirection = "asc" | "desc";
+const ROW_HEIGHT = 44;
+
+function SortButton({
+  field,
+  label,
+  sortField,
+  sortOrder,
+  onSort,
+}: {
+  field: FileSortField;
+  label: string;
+  sortField: FileSortField;
+  sortOrder: SortOrder;
+  onSort: (f: FileSortField) => void;
+}) {
+  const active = sortField === field;
+  const Icon = !active ? ArrowUpDown : sortOrder === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => onSort(field)}
+      className="hover:bg-transparent px-1"
+      aria-sort={active ? (sortOrder === "asc" ? "ascending" : "descending") : undefined}
+    >
+      {label}
+      <Icon className="ml-1 h-4 w-4" aria-hidden />
+    </Button>
+  );
+}
 
 export function FileTable({
   files,
+  sortField,
+  sortOrder,
+  onSort,
   onDirectoryClick,
-  onFileClick,
+  onOpenFile,
+  onRevealFile,
   onDeleteFile,
   showPath = false,
+  onEndReached,
+  emptyMessage = "This folder is empty.",
 }: FileTableProps) {
-  const { fileTable, setFileTable } = useFilters();
-  const sortFieldRaw = fileTable.sortField as unknown;
-  const sortField: SortField =
-    sortFieldRaw === "modifiedTime" ? "name" : (sortFieldRaw as SortField);
-  const sortDirection = fileTable.sortDirection as SortDirection;
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setFileTable({ sortDirection: sortDirection === "asc" ? "desc" : "asc" });
-    } else {
-      setFileTable({ sortField: field, sortDirection: "asc" });
-    }
-  };
-
-  const handleRowClick = (file: FileEntry) => {
-    if (file.isDirectory && onDirectoryClick) {
-      onDirectoryClick(file);
-    } else if (onFileClick) {
-      onFileClick(file);
-    }
-  };
-
-  const sortedFiles = [...files].sort((a, b) => {
-    // Directories first
-    if (a.isDirectory !== b.isDirectory) {
-      return a.isDirectory ? -1 : 1;
-    }
-
-    let aValue: string | number;
-    let bValue: string | number;
-
-    switch (sortField) {
-      case "size":
-        aValue = a.sizeOnDisk;
-        bValue = b.sizeOnDisk;
-        break;
-      case "extension":
-        aValue = a.extension || "";
-        bValue = b.extension || "";
-        break;
-      default:
-        aValue = a.name.toLowerCase();
-        bValue = b.name.toLowerCase();
-    }
-
-    if (typeof aValue === "string" && typeof bValue === "string") {
-      return sortDirection === "asc"
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
-    }
-    return sortDirection === "asc"
-      ? (aValue as number) - (bValue as number)
-      : (bValue as number) - (aValue as number);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: files.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 12,
   });
+  const virtualItems = virtualizer.getVirtualItems();
+  const lastIndex = virtualItems.length ? virtualItems[virtualItems.length - 1].index : -1;
+
+  useEffect(() => {
+    if (onEndReached && lastIndex >= files.length - 20 && files.length > 0) onEndReached();
+  }, [lastIndex, files.length, onEndReached]);
+
+  const grid = showPath
+    ? "grid-cols-[2rem_minmax(0,1.2fr)_minmax(0,1.5fr)_6rem_6rem_6.5rem]"
+    : "grid-cols-[2rem_minmax(0,1fr)_6rem_6rem_6.5rem]";
 
   return (
-    <div className="rounded-md border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-12"></TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSort("name")}
-                className="hover:bg-transparent"
-              >
-                Name
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </TableHead>
-            {showPath && <TableHead>Path</TableHead>}
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSort("extension")}
-                className="hover:bg-transparent"
-              >
-                Type
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleSort("size")}
-                className="hover:bg-transparent"
-              >
-                Size
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </TableHead>
-            {onDeleteFile && <TableHead className="w-12"></TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedFiles.length === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={
-                  showPath
-                    ? 5 + (onDeleteFile ? 1 : 0)
-                    : 4 + (onDeleteFile ? 1 : 0)
-                }
-                className="text-center text-muted-foreground py-8"
-              >
-                No files found. Start a scan to populate this table.
-              </TableCell>
-            </TableRow>
-          ) : (
-            sortedFiles.map((file, index) => (
-              <TableRow
-                key={file.id || index}
-                className={cn(
-                  "group",
-                  file.isDirectory ? "cursor-pointer" : "",
-                )}
-                onClick={() => handleRowClick(file)}
-              >
-                <TableCell>
-                  {file.isDirectory ? (
-                    <FolderOpen className="h-4 w-4 text-blue-500" />
-                  ) : (
-                    <span>{getFileIcon(file.extension, false)}</span>
-                  )}
-                </TableCell>
-                <TableCell className="font-medium">
-                  <div
-                    className={cn(
-                      "truncate max-w-md",
-                      file.isDirectory ? "text-primary font-semibold" : "",
-                    )}
-                    title={file.name}
-                  >
-                    {file.name}
-                  </div>
-                </TableCell>
-                {showPath && (
-                  <TableCell className="text-xs text-muted-foreground font-mono">
-                    <div className="truncate max-w-md" title={file.path}>
+    <div className="rounded-md border border-border text-sm" role="table" aria-rowcount={files.length + 1}>
+      <div role="row" className={cn("grid items-center gap-2 border-b border-border px-2 py-1 font-medium text-muted-foreground", grid)}>
+        <span role="columnheader" className="sr-only">
+          Icon
+        </span>
+        <span role="columnheader">
+          <SortButton field="name" label="Name" sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+        </span>
+        {showPath && <span role="columnheader">Path</span>}
+        <span role="columnheader">
+          <SortButton field="extension" label="Type" sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+        </span>
+        <span role="columnheader">
+          <SortButton field="size" label="Size" sortField={sortField} sortOrder={sortOrder} onSort={onSort} />
+        </span>
+        <span role="columnheader" className="sr-only">
+          Actions
+        </span>
+      </div>
+
+      {files.length === 0 ? (
+        <div className="text-center text-muted-foreground py-8">{emptyMessage}</div>
+      ) : (
+        <div ref={scrollRef} className="max-h-[600px] overflow-auto" role="rowgroup">
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {virtualItems.map((item) => {
+              const file = files[item.index];
+              const activate = () =>
+                file.isDirectory ? onDirectoryClick?.(file) : (onRevealFile ?? onOpenFile)?.(file);
+              return (
+                <div
+                  key={file.id}
+                  role="row"
+                  aria-rowindex={item.index + 2}
+                  className={cn("group absolute left-0 right-0 grid items-center gap-2 px-2 border-b border-border/60 hover:bg-muted/50", grid)}
+                  style={{ top: item.start, height: ROW_HEIGHT }}
+                >
+                  <span role="cell" aria-hidden>
+                    {file.isDirectory ? <FolderOpen className="h-4 w-4 text-blue-500" /> : getFileIcon(file.extension)}
+                  </span>
+                  <span role="cell" className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={activate}
+                      className={cn(
+                        "block max-w-full truncate text-left hover:underline focus-visible:underline",
+                        file.isDirectory ? "text-primary font-semibold" : "font-medium",
+                      )}
+                      title={file.isDirectory ? `Open ${file.path}` : `Show ${file.path} in the file manager`}
+                    >
+                      {file.name}
+                    </button>
+                  </span>
+                  {showPath && (
+                    <span role="cell" className="truncate text-xs text-muted-foreground font-mono" title={file.path}>
                       {file.path}
-                    </div>
-                  </TableCell>
-                )}
-                <TableCell>
-                  {file.isDirectory ? (
-                    <Badge variant="secondary">Folder</Badge>
-                  ) : (
-                    <Badge variant="outline">{file.extension || "file"}</Badge>
+                    </span>
                   )}
-                </TableCell>
-                <TableCell>{formatBytes(file.sizeOnDisk)}</TableCell>
-                {onDeleteFile && (
-                  <TableCell>
-                    {!file.isDirectory && (
+                  <span role="cell">
+                    {file.isDirectory ? (
+                      <Badge variant="secondary">Folder</Badge>
+                    ) : (
+                      <Badge variant="outline" className="max-w-full truncate">
+                        {file.extension || "file"}
+                      </Badge>
+                    )}
+                  </span>
+                  <span role="cell">{formatBytes(file.sizeOnDisk)}</span>
+                  <span role="cell" className="flex justify-end gap-0.5">
+                    {!file.isDirectory && onOpenFile && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onOpenFile(file)} title="Open file" aria-label={`Open ${file.name}`}>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {onRevealFile && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onRevealFile(file)} title="Show in file manager" aria-label={`Show ${file.name} in the file manager`}>
+                        <FolderSearch className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {!file.isDirectory && onDeleteFile && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteFile(file);
-                        }}
-                        title="Delete file"
+                        onClick={() => onDeleteFile(file)}
+                        title="Move to trash"
+                        aria-label={`Move ${file.name} to trash`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

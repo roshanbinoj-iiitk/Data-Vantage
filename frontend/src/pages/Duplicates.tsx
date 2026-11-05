@@ -1,399 +1,230 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, useParams } from "react-router-dom";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, AlertTriangle, ArrowUpDown, Search } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DuplicateGroupCard } from "@/components/DuplicateGroup";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { NoScanSelected } from "@/components/NoScanSelected";
+import { PathList } from "@/components/PathList";
+import { StatCard } from "@/components/StatCard";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/hooks/use-confirm";
+import { useLatestScan } from "@/hooks/use-latest-scan";
 import {
+  deleteFiles,
   getDuplicates,
   getScan,
-  getAllScans,
-  deleteFiles,
-  deleteDuplicateGroup,
+  keepDuplicate,
+  type DeleteResult,
   type DuplicateGroup,
-  type ScanResult,
+  type DuplicateSortField,
+  type FileEntry,
 } from "@/api/backend";
 import { useFilters } from "@/lib/filters";
-import { formatBytes, formatNumber } from "@/lib/utils";
+import { queryKeys } from "@/lib/query-keys";
+import { errorMessage, formatBytes, formatNumber } from "@/lib/utils";
 import { motion } from "framer-motion";
 
-type SortField = "name" | "size" | "path" | "count" | "wasted";
-type SortDir = "asc" | "desc";
+const PAGE_SIZE = 20;
 
-function sortGroups(
-  groups: DuplicateGroup[],
-  field: SortField,
-  dir: SortDir,
-): DuplicateGroup[] {
-  const sorted = [...groups];
-  const mul = dir === "asc" ? 1 : -1;
+const sortButtons: { field: DuplicateSortField; label: string }[] = [
+  { field: "name", label: "Name" },
+  { field: "size", label: "Size" },
+  { field: "path", label: "Path" },
+  { field: "count", label: "Count" },
+  { field: "wasted", label: "Wasted" },
+];
 
-  sorted.sort((a, b) => {
-    switch (field) {
-      case "name": {
-        const nameA = a.files[0]?.name ?? "";
-        const nameB = b.files[0]?.name ?? "";
-        return mul * nameA.localeCompare(nameB);
-      }
-      case "size":
-        return mul * (a.fileSize - b.fileSize);
-      case "path": {
-        const pathA = a.files[0]?.path ?? "";
-        const pathB = b.files[0]?.path ?? "";
-        return mul * pathA.localeCompare(pathB);
-      }
-      case "count":
-        return mul * (a.fileCount - b.fileCount);
-      case "wasted":
-        return mul * (a.wastedSpace - b.wastedSpace);
-      default:
-        return 0;
-    }
-  });
-  return sorted;
+function PageHeader({ subtitle, exclusions }: { subtitle: string; exclusions?: string[] }) {
+  return (
+    <div>
+      <h1 className="text-3xl font-bold tracking-tight">Duplicate Files</h1>
+      <p className="text-muted-foreground mt-1 text-lg break-all">{subtitle}</p>
+      {exclusions && exclusions.length > 0 && (
+        <p className="text-xs text-muted-foreground mt-1">Excluded from the scan: {exclusions.join(", ")}</p>
+      )}
+    </div>
+  );
 }
 
 export function Duplicates() {
   const { scanId } = useParams<{ scanId: string }>();
-  const navigate = useNavigate();
-  const [groups, setGroups] = useState<DuplicateGroup[]>([]);
-  const [total, setTotal] = useState(0);
-  const [exclusions, setExclusions] = useState<string[]>([]);
-  const [scan, setScan] = useState<ScanResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const limit = 20;
-
-  // Sort & filter state (global)
-  const { duplicates, setDuplicates } = useFilters();
-  const sortField = duplicates.sortField as SortField;
-  const sortDir = duplicates.sortDir as SortDir;
-  const filterText = duplicates.filterText;
-
-  // Delete confirmation state
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const [confirmDesc, setConfirmDesc] = useState("");
-  const [pendingAction, setPendingAction] = useState<
-    (() => Promise<void>) | null
-  >(null);
-  const { toast } = useToast();
-
-  // Auto-select latest scan if none specified
-  useEffect(() => {
-    if (!scanId) {
-      getAllScans()
-        .then((scans) => {
-          const latestCompleted = scans.find(
-            (scan) => !scan.status || scan.status === "completed",
-          );
-          if (latestCompleted) {
-            navigate(`/duplicates/${latestCompleted.scanId}`, { replace: true });
-          } else {
-            setLoading(false);
-          }
-        })
-        .catch(() => setLoading(false));
-    }
-  }, [scanId, navigate]);
-
-  useEffect(() => {
-    if (!scanId) return;
-    const id = parseInt(scanId);
-
-    setLoading(true);
-    Promise.all([getDuplicates(id, limit, offset), getScan(id)])
-      .then(([dupData, scanData]) => {
-        setGroups(dupData.groups);
-        setTotal(dupData.total);
-        setExclusions(dupData.exclusions ?? []);
-        setScan(scanData);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [scanId, offset]);
-
-  const reloadDuplicates = useCallback(() => {
-    if (!scanId) return;
-    const id = parseInt(scanId);
-    getDuplicates(id, limit, offset)
-      .then((dupData) => {
-        setGroups(dupData.groups);
-        setTotal(dupData.total);
-        setExclusions(dupData.exclusions ?? []);
-      })
-      .catch(console.error);
-  }, [scanId, limit, offset]);
-
-  const handleDeleteFile = useCallback(
-    (path: string) => {
-      setConfirmTitle("Delete File");
-      setConfirmDesc(`Permanently delete this file from disk?\n\n${path}`);
-      setPendingAction(() => async () => {
-        const id = parseInt(scanId!);
-        try {
-          const res = await deleteFiles(id, [path]);
-          if (res.deletedCount > 0) {
-            toast("success", `Deleted ${path.split("/").pop()}`);
-          }
-          if (res.failedCount > 0) {
-            toast("error", `Failed to delete ${res.failed.join(", ")}`);
-          }
-          reloadDuplicates();
-        } catch (err: unknown) {
-          toast("error", err instanceof Error ? err.message : "Delete failed");
-        }
-      });
-      setConfirmOpen(true);
-    },
-    [scanId, reloadDuplicates, toast],
-  );
-
-  const handleDeleteGroup = useCallback(
-    (hash: string, keepPath: string) => {
-      const group = groups.find((g) => g.hash === hash);
-      const deleteCount = group ? group.fileCount - 1 : 0;
-      setConfirmTitle("Delete Duplicate Group");
-      setConfirmDesc(
-        `Keep "${keepPath.split("/").pop()}" and permanently delete ${deleteCount} other duplicate${deleteCount !== 1 ? "s" : ""} from disk?`,
-      );
-      setPendingAction(() => async () => {
-        const id = parseInt(scanId!);
-        try {
-          const res = await deleteDuplicateGroup(id, hash, keepPath);
-          if (res.deletedCount > 0) {
-            toast(
-              "success",
-              `Deleted ${res.deletedCount} duplicate file${res.deletedCount !== 1 ? "s" : ""}`,
-            );
-          }
-          if (res.failedCount > 0) {
-            toast(
-              "error",
-              `Failed to delete ${res.failedCount} file${res.failedCount !== 1 ? "s" : ""}`,
-            );
-          }
-          reloadDuplicates();
-        } catch (err: unknown) {
-          toast("error", err instanceof Error ? err.message : "Delete failed");
-        }
-      });
-      setConfirmOpen(true);
-    },
-    [scanId, groups, reloadDuplicates, toast],
-  );
-
-  const handleConfirm = useCallback(async () => {
-    setConfirmOpen(false);
-    if (pendingAction) {
-      await pendingAction();
-      setPendingAction(null);
-    }
-  }, [pendingAction]);
-
-  const handleCancelConfirm = useCallback(() => {
-    setConfirmOpen(false);
-    setPendingAction(null);
-  }, []);
-
-  // Apply filter + sort
-  const displayGroups = useMemo(() => {
-    let filtered = groups;
-    if (filterText.trim()) {
-      const q = filterText.toLowerCase();
-      filtered = groups.filter((g) =>
-        g.files.some(
-          (f) =>
-            f.name.toLowerCase().includes(q) ||
-            f.path.toLowerCase().includes(q) ||
-            f.extension.toLowerCase().includes(q),
-        ),
-      );
-    }
-    return sortGroups(filtered, sortField, sortDir);
-  }, [groups, filterText, sortField, sortDir]);
-
-  const totalDuplicates = groups.reduce((sum, g) => sum + g.fileCount - 1, 0);
-  const wastedSpace = groups.reduce((sum, g) => sum + g.wastedSpace, 0);
-
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setDuplicates({ sortDir: sortDir === "asc" ? "desc" : "asc" });
-    } else {
-      setDuplicates({
-        sortField: field,
-        sortDir: field === "name" || field === "path" ? "asc" : "desc",
-      });
-    }
-  }
-
-  const sortButtons: { field: SortField; label: string }[] = [
-    { field: "name", label: "Name" },
-    { field: "size", label: "Size" },
-    { field: "path", label: "Path" },
-    { field: "count", label: "Count" },
-    { field: "wasted", label: "Wasted" },
-  ];
+  const { scan: latest, isLoading } = useLatestScan();
 
   if (!scanId) {
+    if (isLoading) return null;
+    if (latest) return <Navigate to={`/duplicates/${latest.scanId}`} replace />;
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="space-y-6"
-      >
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Duplicate Files</h1>
-          <p className="text-muted-foreground mt-1 text-lg">
-            Identify and manage duplicate files to free up storage
-          </p>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>No Scan Selected</CardTitle>
-            <CardDescription>
-              Run a scan from the Dashboard to detect duplicate files
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center text-muted-foreground">
-              <Copy className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No scan data available</p>
-              <Button
-                variant="link"
-                onClick={() => navigate("/")}
-                className="mt-2"
-              >
-                Go to Dashboard
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      <div className="space-y-6">
+        <PageHeader subtitle="Identify and manage duplicate files to free up storage" />
+        <NoScanSelected description="Run a scan from the Dashboard to detect duplicate files" icon={Copy} />
+      </div>
+    );
+  }
+  return <ScanDuplicates key={scanId} scanId={Number(scanId)} />;
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+function ScanDuplicates({ scanId }: { scanId: number }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { confirm, dialog } = useConfirm();
+  const { duplicates: prefs, setDuplicates } = useFilters();
+  const [offset, setOffset] = useState(0);
+  const filter = useDebounced(prefs.filterText.trim(), 250);
+
+  // A new sort or filter starts from the first page.
+  useEffect(() => setOffset(0), [prefs.sortField, prefs.sortDir, filter]);
+
+  const scan = useQuery({ queryKey: queryKeys.scan(scanId), queryFn: ({ signal }) => getScan(scanId, signal) });
+  const dups = useQuery({
+    queryKey: queryKeys.duplicates(scanId, prefs.sortField, prefs.sortDir, filter, offset),
+    queryFn: ({ signal }) =>
+      getDuplicates(scanId, { sort: prefs.sortField, order: prefs.sortDir, filter, limit: PAGE_SIZE, offset }, signal),
+    enabled: scan.data?.status === "completed",
+    placeholderData: keepPreviousData,
+  });
+
+  const groups = dups.data?.groups ?? [];
+  const total = dups.data?.total ?? 0;
+
+  // Deleting the last group on the last page: step back a page.
+  useEffect(() => {
+    if (dups.data && offset > 0 && offset >= total) setOffset(Math.max(0, Math.floor((total - 1) / PAGE_SIZE) * PAGE_SIZE));
+  }, [dups.data, offset, total]);
+
+  const report = (res: DeleteResult) => {
+    if (res.deletedCount > 0)
+      toast("success", `Moved ${res.deletedCount} file${res.deletedCount !== 1 ? "s" : ""} to the trash`);
+    for (const f of res.failed) toast("error", `${f.path}: ${f.reason}`);
+  };
+
+  const afterChange = () => queryClient.invalidateQueries({ queryKey: ["scans"] });
+
+  const handleDeleteFile = async (file: FileEntry) => {
+    const ok = await confirm({
+      title: "Move to Trash",
+      description: (
+        <>
+          Move this file to the trash?
+          <PathList paths={[file.path]} />
+        </>
+      ),
+    });
+    if (!ok) return;
+    try {
+      report(await deleteFiles(scanId, [file.id]));
+    } catch (err) {
+      toast("error", errorMessage(err, "Delete failed"));
+    }
+    afterChange();
+  };
+
+  const handleKeep = async (group: DuplicateGroup, keep: FileEntry) => {
+    const others = group.files.filter((f) => f.id !== keep.id).map((f) => f.path);
+    const ok = await confirm({
+      title: "Keep One Copy",
+      description: (
+        <>
+          Keep <span className="font-mono text-foreground break-all">{keep.path}</span> and move these{" "}
+          {others.length} cop{others.length === 1 ? "y" : "ies"} to the trash? Each one is compared byte by byte with the
+          kept file first.
+          <PathList paths={others} />
+        </>
+      ),
+    });
+    if (!ok) return;
+    try {
+      report(await keepDuplicate(scanId, group.groupId, keep.id));
+    } catch (err) {
+      toast("error", errorMessage(err, "Delete failed"));
+    }
+    afterChange();
+  };
+
+  const toggleSort = (field: DuplicateSortField) => {
+    if (prefs.sortField === field) setDuplicates({ sortDir: prefs.sortDir === "asc" ? "desc" : "asc" });
+    else setDuplicates({ sortField: field, sortDir: field === "name" || field === "path" ? "asc" : "desc" });
+  };
+
+  if (scan.isError) {
+    return (
+      <div className="space-y-6">
+        <PageHeader subtitle="Identify and manage duplicate files to free up storage" />
+        <NoScanSelected description={errorMessage(scan.error, "This scan doesn't exist")} icon={Copy} />
+      </div>
+    );
+  }
+  if (scan.data && scan.data.status !== "completed") {
+    return (
+      <div className="space-y-6">
+        <PageHeader subtitle={scan.data.rootPath} />
+        <NoScanSelected description={`This scan is ${scan.data.status}; only completed scans have duplicates.`} icon={Copy} />
+      </div>
     );
   }
 
+  const s = scan.data;
+  const loading = scan.isLoading || dups.isLoading;
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6"
-    >
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Duplicate Files</h1>
-        <p className="text-muted-foreground mt-1 text-lg">
-          {scan
-            ? `Scan: ${scan.rootPath}`
-            : "Identify and manage duplicate files to free up storage"}
-        </p>
-        {exclusions.length > 0 && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Excluded patterns: {exclusions.join(", ")}
-          </p>
-        )}
-      </div>
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="space-y-6">
+      <PageHeader subtitle={s ? `Scan: ${s.rootPath}` : "Loading…"} exclusions={s?.exclusions} />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-orange-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">
-              Duplicate Groups
-            </CardTitle>
-            <Copy className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-              {formatNumber(total)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
-              Groups of identical files
-            </p>
-          </CardContent>
-        </Card>
+      {/* Totals for the whole scan, not just the page on screen. */}
+      {s && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <StatCard title="Duplicate Groups" icon={Copy} tone="orange" value={formatNumber(s.duplicateGroups)} caption="Groups of identical files" />
+          <StatCard title="Wasted Space" icon={AlertTriangle} tone="red" value={formatBytes(s.wastedSpace)} caption="Storage that can be reclaimed" />
+          <StatCard
+            title="Extra Copies"
+            icon={Copy}
+            tone="blue"
+            value={formatNumber(s.duplicateFiles - s.duplicateGroups)}
+            caption="Files that can be removed"
+          />
+        </div>
+      )}
 
-        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-red-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">
-              Wasted Space
-            </CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-              {formatBytes(wastedSpace)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
-              Storage that can be reclaimed
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:shadow-md transition-all shadow-sm border-l-4 border-l-blue-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">
-              Duplicate Files
-            </CardTitle>
-            <Copy className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-              {formatNumber(totalDuplicates)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 font-medium italic">
-              Files that can be removed
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Sort & Filter toolbar */}
-      {!loading && groups.length > 0 && (
+      {s && s.duplicateGroups > 0 && (
         <Card className="shadow-sm">
           <CardContent className="py-3">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {/* Filter input */}
               <div className="relative flex-1 w-full sm:max-w-xs">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden />
                 <Input
                   placeholder="Filter by name or path…"
-                  value={filterText}
-                  onChange={(e) =>
-                    setDuplicates({ filterText: e.target.value })
-                  }
+                  aria-label="Filter duplicate groups by name or path"
+                  value={prefs.filterText}
+                  onChange={(e) => setDuplicates({ filterText: e.target.value })}
                   className="pl-9 h-9"
                 />
               </div>
-
-              {/* Sort buttons */}
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap" role="group" aria-label="Sort groups">
                 <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
-                  <ArrowUpDown className="h-3 w-3" /> Sort:
+                  <ArrowUpDown className="h-3 w-3" aria-hidden /> Sort:
                 </span>
                 {sortButtons.map((btn) => (
                   <Button
                     key={btn.field}
-                    variant={sortField === btn.field ? "default" : "outline"}
+                    variant={prefs.sortField === btn.field ? "default" : "outline"}
                     size="sm"
                     className="h-7 text-xs px-2"
                     onClick={() => toggleSort(btn.field)}
+                    aria-pressed={prefs.sortField === btn.field}
                   >
                     {btn.label}
-                    {sortField === btn.field && (
-                      <span className="ml-1">
-                        {sortDir === "asc" ? "↑" : "↓"}
-                      </span>
-                    )}
+                    {prefs.sortField === btn.field && <span className="ml-1">{prefs.sortDir === "asc" ? "↑" : "↓"}</span>}
                   </Button>
                 ))}
               </div>
@@ -405,75 +236,54 @@ export function Duplicates() {
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-12">
-            <div className="animate-pulse-slow text-muted-foreground">
-              Loading duplicates...
-            </div>
+            <div className="animate-pulse-slow text-muted-foreground">Loading duplicates...</div>
           </CardContent>
         </Card>
       ) : groups.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>No Duplicates Found</CardTitle>
+            <CardTitle>{filter ? "No Matching Groups" : "No Duplicates Found"}</CardTitle>
             <CardDescription>
-              No duplicate files were detected in this scan
+              {filter ? "No duplicate group has a file matching the filter" : "No duplicate files were detected in this scan"}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center text-muted-foreground">
-              <Copy className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No duplicate files detected</p>
-            </div>
+            <Copy className="h-12 w-12 opacity-50 text-muted-foreground" aria-hidden />
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            {filterText.trim()
-              ? `Showing ${displayGroups.length} of ${total} groups`
-              : `Found ${total} groups of duplicate files`}
+            {filter
+              ? `${formatNumber(total)} of ${formatNumber(s?.duplicateGroups ?? total)} groups match`
+              : `Found ${formatNumber(total)} groups of duplicate files`}
           </div>
-          {displayGroups.map((group, idx) => (
+          {groups.map((group, idx) => (
             <DuplicateGroupCard
-              key={group.hash}
+              key={group.groupId}
               group={group}
               index={offset + idx}
               onDeleteFile={handleDeleteFile}
-              onDeleteGroup={handleDeleteGroup}
+              onKeep={handleKeep}
             />
           ))}
         </div>
       )}
 
-      {/* Pagination */}
-      {total > limit && (
+      {total > PAGE_SIZE && (
         <div className="flex items-center justify-center gap-4 py-4">
-          <Button
-            variant="outline"
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - limit))}
-          >
+          <Button variant="outline" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
             &larr; Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            {offset + 1}&ndash;{Math.min(offset + limit, total)} of {total}
+            {offset + 1}&ndash;{Math.min(offset + PAGE_SIZE, total)} of {total}
           </span>
-          <Button
-            variant="outline"
-            disabled={offset + limit >= total}
-            onClick={() => setOffset(offset + limit)}
-          >
+          <Button variant="outline" disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>
             Next &rarr;
           </Button>
         </div>
       )}
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title={confirmTitle}
-        description={confirmDesc}
-        onConfirm={handleConfirm}
-        onCancel={handleCancelConfirm}
-      />
+      {dialog}
     </motion.div>
   );
 }

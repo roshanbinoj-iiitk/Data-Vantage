@@ -1,0 +1,15 @@
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  clang-analyzer-*,
+  concurrency-*,
+  performance-*,
+  -performance-avoid-endl,
+  modernize-use-nullptr,
+  modernize-use-override,
+  readability-container-size-empty,
+  misc-redundant-expression
+WarningsAsErrors: ''
+HeaderFilterRegex: 'backend/(include|src)/.*'

@@ -1,0 +1,10 @@
+# Matches the existing style: Allman braces, 4-space indent.
+BasedOnStyle: Microsoft
+IndentWidth: 4
+ColumnLimit: 120
+NamespaceIndentation: All
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: All
+PointerAlignment: Right
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

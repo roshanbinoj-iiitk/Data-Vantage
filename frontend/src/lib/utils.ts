@@ -6,10 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatBytes(bytes: number, decimals = 2): string {
-  if (bytes === 0) return "0 B";
+  if (!bytes || bytes <= 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
 }
 
@@ -23,76 +23,30 @@ export function formatDuration(seconds: number): string {
   const secs = Math.round(seconds % 60);
   if (mins < 60) return `${mins}m ${secs}s`;
   const hrs = Math.floor(mins / 60);
-  const remainMins = mins % 60;
-  return `${hrs}h ${remainMins}m`;
+  return `${hrs}h ${mins % 60}m`;
 }
 
-export function truncatePath(path: string, maxLength: number): string {
-  if (path.length <= maxLength) return path;
-  const half = Math.floor((maxLength - 3) / 2);
-  return `${path.slice(0, half)}...${path.slice(-half)}`;
+export function formatDate(unixSeconds: number): string {
+  if (!unixSeconds) return "";
+  return new Date(unixSeconds * 1000).toLocaleString();
 }
 
-export function getFileIcon(extension: string, _isDirectory: boolean): string {
+export function errorMessage(err: unknown, fallback = "Something went wrong"): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
+export function getFileIcon(extension: string): string {
   const ext = extension.toLowerCase().replace(/^\./, "");
-  const icons: Record<string, string> = {
-    // Images
-    png: "🖼️",
-    jpg: "🖼️",
-    jpeg: "🖼️",
-    gif: "🖼️",
-    webp: "🖼️",
-    svg: "🖼️",
-    bmp: "🖼️",
-    ico: "🖼️",
-    // Video
-    mp4: "🎬",
-    mkv: "🎬",
-    avi: "🎬",
-    mov: "🎬",
-    webm: "🎬",
-    flv: "🎬",
-    // Audio
-    mp3: "🎵",
-    wav: "🎵",
-    flac: "🎵",
-    aac: "🎵",
-    ogg: "🎵",
-    // Documents
-    pdf: "📄",
-    doc: "📝",
-    docx: "📝",
-    xls: "📊",
-    xlsx: "📊",
-    ppt: "📊",
-    pptx: "📊",
-    txt: "📄",
-    md: "📄",
-    // Archives
-    zip: "📦",
-    tar: "📦",
-    gz: "📦",
-    rar: "📦",
-    "7z": "📦",
-    // Code
-    js: "💻",
-    ts: "💻",
-    tsx: "💻",
-    jsx: "💻",
-    py: "💻",
-    rs: "💻",
-    cpp: "💻",
-    c: "💻",
-    h: "💻",
-    go: "💻",
-    java: "💻",
-    rb: "💻",
-    // Config
-    json: "⚙️",
-    yaml: "⚙️",
-    yml: "⚙️",
-    toml: "⚙️",
-    xml: "⚙️",
-  };
-  return icons[ext] ?? "📄";
+  const groups: [string, string[]][] = [
+    ["🖼️", ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "heic"]],
+    ["🎬", ["mp4", "mkv", "avi", "mov", "webm", "flv"]],
+    ["🎵", ["mp3", "wav", "flac", "aac", "ogg", "opus"]],
+    ["📝", ["doc", "docx", "odt"]],
+    ["📊", ["xls", "xlsx", "ods", "ppt", "pptx", "odp", "csv"]],
+    ["📦", ["zip", "tar", "gz", "rar", "7z", "xz", "zst"]],
+    ["💻", ["js", "ts", "tsx", "jsx", "py", "rs", "cpp", "c", "h", "go", "java", "rb"]],
+    ["⚙️", ["json", "yaml", "yml", "toml", "xml", "ini"]],
+  ];
+  for (const [icon, exts] of groups) if (exts.includes(ext)) return icon;
+  return "📄";
 }

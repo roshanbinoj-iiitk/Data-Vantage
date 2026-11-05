@@ -1,84 +1,101 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <functional>
 #include <atomic>
-#include <mutex>
+#include <chrono>
 #include <cstdint>
-#include <set>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
+
+#include "exclusions.h"
 
 struct FileEntry
 {
-    std::string path;
+    int64_t id = 0;
+    int64_t parent_id = -1;
+    // For the root entry this is the full root path; for everything else it
+    // is the last path component. Full paths are rebuilt from the parent chain.
     std::string name;
     std::string extension;
-    uint64_t size; // disk consumption (st_blocks * 512) on Linux, apparent size elsewhere
-    uint64_t modified_time;
-    bool is_directory;
+    uint64_t size = 0;         // apparent size (st_size); used to group duplicates
+    uint64_t disk_size = 0;    // disk consumption (st_blocks * 512); folders sum this
+    int64_t modified_time = 0; // seconds since the Unix epoch (st_mtime)
+    bool is_directory = false;
     std::string hash;
-    int64_t parent_id;
-    int64_t id;
+
+    // Only filled in by the scanner (and by queries that resolve paths);
+    // not stored in the database.
+    std::string path;
 };
 
 struct ScanProgress
 {
-    uint64_t files_scanned;
-    uint64_t directories_scanned;
-    uint64_t total_size;
-    uint64_t duplicates_found;
-    uint64_t skipped_files;
-    bool is_scanning;
+    uint64_t files_scanned = 0;
+    uint64_t directories_scanned = 0;
+    uint64_t total_size = 0;
+    uint64_t duplicates_found = 0;
+    uint64_t skipped_files = 0;
+    bool is_scanning = false;
     std::string current_path;
-    double elapsed_seconds;
-    double estimated_seconds_remaining; // -1 if unknown
-    double files_per_second;
+    double elapsed_seconds = 0;
+    double estimated_seconds_remaining = -1; // -1 if unknown
+    double files_per_second = 0;
 };
 
 using ProgressCallback = std::function<void(const ScanProgress &)>;
 
+struct ScanOptions
+{
+    uint64_t min_size = 0;
+    ExclusionMatcher exclusions;
+};
+
 class Scanner
 {
-public:
-    Scanner();
-    ~Scanner();
+  public:
+    Scanner() = default;
 
-    // Start scanning a directory recursively
-    void scan(const std::string &root_path, ProgressCallback callback = nullptr, uint64_t min_size = 0);
+    // Walk root_path (iteratively; no recursion). Blocks until done or stopped.
+    void scan(const std::string &root_path, const ScanOptions &options, const ProgressCallback &callback = nullptr);
 
-    // Stop ongoing scan
-    void stop();
+    // Ask a running scan to stop. Safe to call from any thread.
+    void stop() { m_stop_requested = true; }
+    bool stop_requested() const { return m_stop_requested.load(); }
 
-    // Get current progress
+    // Safe to call from any thread while scan() runs.
     ScanProgress get_progress() const;
+    bool is_scanning() const { return m_scanning.load(); }
 
-    // Get all scanned files
-    std::vector<FileEntry> get_files() const;
+    // Moves the collected entries out of the scanner. Only call after scan()
+    // has returned. Entries are ordered so that a parent always precedes its
+    // children, and entry i has id == i.
+    std::vector<FileEntry> take_files() { return std::move(m_files); }
 
-    // Check if scanning
-    bool is_scanning() const;
+  private:
+    struct PairHash
+    {
+        size_t operator()(const std::pair<uint64_t, uint64_t> &p) const noexcept
+        {
+            return std::hash<uint64_t>()(p.first) ^ (std::hash<uint64_t>()(p.second) * 0x9E3779B97F4A7C15ULL);
+        }
+    };
 
-private:
-    void scan_recursive(const std::string &path, int64_t parent_id);
-
+    // Everything below is touched only by the scanning thread, except the
+    // atomics and m_current_path (guarded by m_path_mutex).
     std::vector<FileEntry> m_files;
-    mutable std::mutex m_mutex;
-    std::atomic<bool> m_scanning;
-    std::atomic<bool> m_stop_requested;
-    std::atomic<uint64_t> m_files_scanned;
-    std::atomic<uint64_t> m_dirs_scanned;
-    std::atomic<uint64_t> m_total_size;
-    std::atomic<uint64_t> m_duplicates_found;
-    std::atomic<uint64_t> m_skipped_files;
-    std::string m_current_path;
-    mutable std::mutex m_path_mutex;
-    ProgressCallback m_callback;
-    std::chrono::steady_clock::time_point m_start_time;
-    int64_t m_next_id;
-    uint64_t m_min_size;
+    std::unordered_set<std::pair<uint64_t, uint64_t>, PairHash> m_visited_inodes; // (dev, ino)
 
-    // Track visited inodes to avoid counting hard links multiple times
-    std::set<std::pair<uint64_t, uint64_t>> m_visited_inodes; // (dev, ino)
-    std::mutex m_inode_mutex;
+    std::atomic<bool> m_scanning{false};
+    std::atomic<bool> m_stop_requested{false};
+    std::atomic<uint64_t> m_files_scanned{0};
+    std::atomic<uint64_t> m_dirs_scanned{0};
+    std::atomic<uint64_t> m_total_size{0};
+    std::atomic<uint64_t> m_skipped_files{0};
+
+    mutable std::mutex m_path_mutex;
+    std::string m_current_path;
+    std::chrono::steady_clock::time_point m_start_time{};
 };
