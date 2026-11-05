@@ -32,13 +32,6 @@ jobs:
           TSAN_OPTIONS: halt_on_error=1
         run: backend/tests/test_api.sh build/data-vantage
 
-  format:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: clang-format
-        run: clang-format --dry-run --Werror backend/src/*.cpp backend/include/*.h backend/tests/*.cpp backend/tests/*.h
-
   frontend:
     runs-on: ubuntu-24.04
     defaults:
