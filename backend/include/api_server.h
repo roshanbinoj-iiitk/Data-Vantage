@@ -12,6 +12,7 @@ struct ServerConfig
     std::string token;      // "" = generate a random one
     std::string token_file; // "" = $XDG_RUNTIME_DIR/data-vantage/token
     unsigned hash_threads = 0;
+    bool open_browser = false; // open the web UI once the port is bound
 };
 
 class ApiServer

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(DataVantage VERSION 1.0.0 LANGUAGES CXX)
+project(DataVantage VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,6 +15,7 @@ option(USE_SYSTEM_HTTPLIB "Use system-installed cpp-httplib" OFF)
 option(USE_SYSTEM_JSON "Use system-installed nlohmann/json" OFF)
 option(USE_SYSTEM_XXHASH "Use system-installed xxHash headers" OFF)
 option(DV_BUILD_TESTS "Build unit tests (fetches Catch2)" OFF)
+set(DV_WEB_DIST "" CACHE PATH "Built frontend (frontend/dist) to install into share/data-vantage/web")
 set(DV_SANITIZE "" CACHE STRING "Sanitizer to build with: address, thread, undefined or empty")
 
 if(ENABLE_NATIVE_OPT)
@@ -99,6 +100,45 @@ target_link_libraries(data-vantage PRIVATE dv_core)
 target_compile_options(data-vantage PRIVATE -Wall -Wextra -Wpedantic)
 
 install(TARGETS data-vantage DESTINATION bin)
+
+# ---- Desktop integration and packages ----
+set(DV_PACKAGING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../packaging/linux)
+install(FILES ${DV_PACKAGING_DIR}/data-vantage.desktop DESTINATION share/applications)
+install(FILES ${DV_PACKAGING_DIR}/data-vantage.svg DESTINATION share/icons/hicolor/scalable/apps)
+if(DV_WEB_DIST)
+    if(NOT EXISTS ${DV_WEB_DIST}/index.html)
+        message(FATAL_ERROR "DV_WEB_DIST=${DV_WEB_DIST} has no index.html; build the frontend first")
+    endif()
+    install(DIRECTORY ${DV_WEB_DIST}/ DESTINATION share/data-vantage/web)
+endif()
+
+# `cpack -G DEB` builds a .deb (see packaging/build-packages.sh).
+set(CPACK_PACKAGE_NAME data-vantage)
+set(CPACK_PACKAGE_VENDOR "Roshan Binoj")
+set(CPACK_PACKAGE_CONTACT "Roshan Binoj <roshanbinoj-iiitk@users.noreply.github.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Disk usage analyzer and duplicate file finder with a web UI")
+set(CPACK_PACKAGE_DESCRIPTION
+    "Scans folders, shows where disk space goes in an interactive chart and finds duplicate files. Copies are compared byte by byte and moved to the desktop Trash, never deleted permanently.")
+set(CPACK_RESOURCE_FILE_LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE)
+set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SECTION utils)
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/roshanbinoj-iiitk/Data-Vantage")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+# Search uses the FTS5 trigram tokenizer, new in SQLite 3.34.
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libsqlite3-0 (>= 3.34)")
+# CPack asks dpkg for the architecture; name it when dpkg isn't installed.
+find_program(DV_DPKG dpkg)
+if(NOT DV_DPKG)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE arm64)
+    endif()
+endif()
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "xdg-utils")
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS "zenity | kdialog")
+include(CPack)
 
 # ---- Tests ----
 if(DV_BUILD_TESTS)

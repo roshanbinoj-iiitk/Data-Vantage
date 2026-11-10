@@ -2,9 +2,11 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <system_error>
 
 namespace
 {
@@ -16,6 +18,23 @@ namespace
             g_server->stop();
     }
 
+    // The web UI installed next to the binary (<prefix>/share/data-vantage/web
+    // for <prefix>/bin/data-vantage), so packages that aren't installed under
+    // /usr, such as the AppImage, find their own copy. Falls back to /usr.
+    std::string default_web_root()
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path exe = fs::read_symlink("/proc/self/exe", ec);
+        if (!ec)
+        {
+            const fs::path web = exe.parent_path().parent_path() / "share" / "data-vantage" / "web";
+            if (fs::exists(web / "index.html", ec))
+                return web.string();
+        }
+        return "/usr/share/data-vantage/web";
+    }
+
     void usage()
     {
         std::cout << "Data-Vantage backend server\n"
@@ -23,11 +42,13 @@ namespace
                   << "  --host, -h HOST      Address to bind (default: 127.0.0.1)\n"
                   << "  --port, -p PORT      Port to listen on (default: 8000)\n"
                   << "  --web-root DIR       Serve the frontend from DIR\n"
-                  << "                       (default: /usr/share/data-vantage/web)\n"
+                  << "                       (default: ../share/data-vantage/web next to the\n"
+                  << "                       binary, else /usr/share/data-vantage/web)\n"
                   << "  --db FILE            Database file\n"
                   << "                       (default: $XDG_DATA_HOME/data-vantage/data_vantage.db)\n"
                   << "  --token-file FILE    Where to write the API token for the dev server\n"
                   << "                       (default: $XDG_RUNTIME_DIR/data-vantage/token)\n"
+                  << "  --open               Open the web UI in the default browser\n"
                   << "  --hash-threads N     Threads used for hashing (default: automatic)\n"
                   << "  --help               Show this help\n";
     }
@@ -36,7 +57,7 @@ namespace
 int main(int argc, char *argv[])
 {
     ServerConfig config;
-    config.web_root = "/usr/share/data-vantage/web";
+    config.web_root = default_web_root();
 
     for (int i = 1; i < argc; i++)
     {
@@ -56,6 +77,8 @@ int main(int argc, char *argv[])
                 config.token_file = argv[++i];
             else if (arg == "--hash-threads" && has_value)
                 config.hash_threads = static_cast<unsigned>(std::stoul(argv[++i]));
+            else if (arg == "--open")
+                config.open_browser = true;
             else if (arg == "--help")
             {
                 usage();

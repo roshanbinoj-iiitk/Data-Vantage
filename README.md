@@ -47,7 +47,30 @@ data-vantage/
 - **Interactive Visualizations** — Dynamic pie chart with clickable folders for navigation (inspired by GNOME Baobab)
 - **Dark/Light Theme** — Toggle between themes
 
-## Prerequisites
+## Install
+
+Download a package from the [latest release](https://github.com/roshanbinoj-iiitk/Data-Vantage/releases/latest). They run on x86_64 distributions with glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Fedora 36+ and similar).
+
+**AppImage (any distribution):**
+
+```bash
+chmod +x Data-Vantage-*-x86_64.AppImage
+./Data-Vantage-*-x86_64.AppImage
+```
+
+It starts the server and opens the web UI in your browser. Press Ctrl+C in the terminal to stop it. If you started it by double-clicking, the server keeps running in the background until you log out or end it with `pkill -f data-vantage`.
+
+**Debian / Ubuntu (.deb):**
+
+```bash
+sudo apt install ./data-vantage_*_amd64.deb
+```
+
+Then start **Data Vantage** from the app menu, or run `data-vantage --open` in a terminal.
+
+**Arch Linux:** `yay -S data-vantage` (see [Arch Linux (AUR)](#arch-linux-aur)).
+
+## Prerequisites (building from source)
 
 ### Backend
 

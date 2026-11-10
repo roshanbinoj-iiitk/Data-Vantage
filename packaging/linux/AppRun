@@ -1,0 +1,8 @@
+#!/bin/sh
+# AppImage entry point. Started with no arguments (double-clicked), it also
+# opens the web UI in the browser; otherwise it passes the arguments through.
+HERE="$(dirname "$(readlink -f "$0")")"
+if [ "$#" -eq 0 ]; then
+    set -- --open
+fi
+exec "$HERE/usr/bin/data-vantage" "$@"

@@ -1,0 +1,55 @@
+name: Release
+
+# Push a tag such as v1.1.0 to build the Linux packages and attach them to a
+# GitHub release for that tag. Run it by hand to get the packages as a
+# workflow artifact without releasing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux-packages:
+    # The oldest supported Ubuntu runner: the packages need a glibc at least
+    # this new (2.35), so they run on Ubuntu 22.04+, Debian 12+, Fedora 36+...
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libsqlite3-dev dpkg-dev file curl
+      - name: Check the tag matches the CMake version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(sed -n 's/^project(DataVantage VERSION \([0-9.]*\).*/\1/p' backend/CMakeLists.txt)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match backend/CMakeLists.txt version $version" >&2
+            exit 1
+          fi
+      - name: Build packages
+        run: packaging/build-packages.sh
+      - name: Smoke test
+        run: |
+          sudo apt-get install -y ./dist/data-vantage_*.deb
+          data-vantage --port 8123 & pid=$!
+          for _ in $(seq 20); do curl -fs http://127.0.0.1:8123/api/health && break; sleep 0.5; done
+          curl -fs http://127.0.0.1:8123/ | grep -q __DATA_VANTAGE_TOKEN__
+          kill "$pid"
+          APPIMAGE_EXTRACT_AND_RUN=1 ./dist/Data-Vantage-*.AppImage --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: dist/*
+      - name: Attach to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -690,11 +690,24 @@ void ApiServer::start()
                   << " makes Data-Vantage reachable from other machines. Anyone with the API token can "
                      "delete files in scanned folders."
                   << std::endl;
-    std::cout << "Data-Vantage listening on http://"
-              << (cfg.host.find(':') != std::string::npos ? "[" + cfg.host + "]" : cfg.host) << ":" << cfg.port
-              << std::endl;
-    if (!m_impl->server.listen(cfg.host, cfg.port))
-        throw std::runtime_error("Failed to bind " + cfg.host + ":" + std::to_string(cfg.port));
+    // httplib's default sets SO_REUSEPORT, which lets a second instance bind
+    // the same port; requests would then be split between two servers with
+    // different tokens. SO_REUSEADDR alone allows a quick restart but makes a
+    // second instance fail to bind.
+    m_impl->server.set_socket_options([](int sock) {
+        int yes = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    });
+    if (!m_impl->server.bind_to_port(cfg.host, cfg.port))
+        throw std::runtime_error("Failed to bind " + cfg.host + ":" + std::to_string(cfg.port) +
+                                 " (is Data-Vantage already running? Try --port)");
+    const std::string url = "http://" + (cfg.host.find(':') != std::string::npos ? "[" + cfg.host + "]" : cfg.host) +
+                            ":" + std::to_string(cfg.port) + "/";
+    std::cout << "Data-Vantage listening on " << url << std::endl;
+    if (cfg.open_browser && !open_with_default_app(url))
+        std::cerr << "Could not open a browser; open " << url << " yourself." << std::endl;
+    if (!m_impl->server.listen_after_bind())
+        throw std::runtime_error("Server stopped unexpectedly on " + url);
 }
 
 void ApiServer::stop()
