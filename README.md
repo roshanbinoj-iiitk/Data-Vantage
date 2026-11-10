@@ -2,6 +2,19 @@
 
 High-performance file scanner, duplicate detector, and disk space analyzer with a modern web interface.
 
+## Demo
+
+https://github.com/user-attachments/assets/50491539-efaa-495f-99dc-8faac79b61b0
+
+Watch the Data-Vantage demo
+
+The video walks through:
+
+Starting a scan of a folder from the web UI and watching live progress
+Browsing results with the file browser and the interactive pie chart
+Finding duplicate groups and keeping one copy (the rest go to the Trash)
+Checking file type statistics
+
 ## Architecture
 
 ```
@@ -33,19 +46,6 @@ data-vantage/
 - **File Browser** — Navigate scanned directories with breadcrumb navigation
 - **Interactive Visualizations** — Dynamic pie chart with clickable folders for navigation (inspired by GNOME Baobab)
 - **Dark/Light Theme** — Toggle between themes
-
-## Demo
-
-https://github.com/user-attachments/assets/50491539-efaa-495f-99dc-8faac79b61b0
-
-Watch the Data-Vantage demo
-
-The video walks through:
-
-Starting a scan of a folder from the web UI and watching live progress
-Browsing results with the file browser and the interactive pie chart
-Finding duplicate groups and keeping one copy (the rest go to the Trash)
-Checking file type statistics
 
 ## Prerequisites
 
