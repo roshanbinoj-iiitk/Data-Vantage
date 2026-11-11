@@ -4,7 +4,7 @@ High-performance file scanner, duplicate detector, and disk space analyzer with 
 
 ## Demo
 
-[![Watch the Data-Vantage Demo](https://img.youtube.com/vi/YOUTUBE_VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=bVWta-AlIxc)
+[![Watch the Data-Vantage Demo](https://img.youtube.com/vi/bVWta-AlIxc/maxresdefault.jpg)](https://www.youtube.com/watch?v=bVWta-AlIxc)
 
 https://github.com/user-attachments/assets/50491539-efaa-495f-99dc-8faac79b61b0
 
