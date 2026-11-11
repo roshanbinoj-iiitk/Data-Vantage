@@ -3,6 +3,8 @@
 #include "database.h"
 #include "test_helpers.h"
 
+#include <sqlite3.h>
+
 namespace
 {
     FileEntry entry(int64_t id, int64_t parent, const std::string &name, bool dir, uint64_t disk)
@@ -129,4 +131,65 @@ TEST_CASE("deleting a scan removes everything")
     db.delete_scan(scan);
     REQUIRE_FALSE(db.get_scan(scan));
     REQUIRE(db.search_files(scan, "txt").empty());
+}
+
+namespace
+{
+    // Rewrites the stored CREATE statement of the search index, as if a
+    // different SQLite version had made it.
+    void rewrite_fts_schema(const std::string &db_path, const std::string &from, const std::string &to)
+    {
+        sqlite3 *raw = nullptr;
+        REQUIRE(sqlite3_open(db_path.c_str(), &raw) == SQLITE_OK);
+        const std::string sql = "PRAGMA writable_schema=ON;"
+                                "UPDATE sqlite_schema SET sql = replace(sql, '" +
+                                from + "', '" + to + "') WHERE name = 'files_fts';"
+                                                     "PRAGMA writable_schema=OFF;";
+        char *err = nullptr;
+        const int rc = sqlite3_exec(raw, sql.c_str(), nullptr, nullptr, &err);
+        const std::string msg = err ? err : "";
+        sqlite3_free(err);
+        sqlite3_close(raw);
+        INFO(msg);
+        REQUIRE(rc == SQLITE_OK);
+    }
+} // namespace
+
+TEST_CASE("a search index this SQLite can't load falls back to LIKE, then gets rebuilt")
+{
+    TempDir dir;
+    const std::string path = (dir.path / "t.db").string();
+    int64_t scan = 0;
+    {
+        Database db(path);
+        REQUIRE(db.has_fts());
+        scan = db.create_scan("/root", {}, 0);
+        db.insert_files(scan, sample());
+    }
+
+    // An index made by a newer SQLite with an option this one doesn't know
+    // (like contentless_delete before 3.43): every statement on it fails.
+    rewrite_fts_schema(path, "contentless_delete=1", "contentless_delete=1, option_from_the_future=1");
+    int64_t scan2 = 0;
+    {
+        Database db(path);
+        REQUIRE_FALSE(db.has_fts());
+        REQUIRE(db.search_files(scan, ".txt").size() == 3);
+        REQUIRE(db.remove_files(scan, {3}) == 1);
+        db.delete_scan(scan);
+        scan2 = db.create_scan("/root", {}, 0);
+        db.insert_files(scan2, sample());
+        REQUIRE(db.search_files(scan2, "a.t").size() == 1);
+    }
+
+    // Back on a SQLite that can use the index: it was rebuilt from the files
+    // table, so rows added and removed in the meantime are right.
+    rewrite_fts_schema(path, ", option_from_the_future=1", "");
+    {
+        Database db(path);
+        REQUIRE(db.has_fts());
+        REQUIRE(db.search_files(scan, ".txt").empty());
+        REQUIRE(db.search_files(scan2, "a.t").size() == 1);
+        REQUIRE(db.search_files(scan2, ".txt").size() == 3);
+    }
 }

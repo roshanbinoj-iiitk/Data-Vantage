@@ -6,5 +6,5 @@ Comment=See what fills your disk and safely remove duplicate files
 Exec=data-vantage --open
 Icon=data-vantage
 Terminal=true
-Categories=System;Utility;FileTools;
+Categories=System;Filesystem;FileTools;
 Keywords=disk;storage;usage;duplicate;space;cleanup;

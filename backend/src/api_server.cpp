@@ -682,7 +682,7 @@ const std::string &ApiServer::token() const
     return m_impl->token;
 }
 
-void ApiServer::start()
+bool ApiServer::start()
 {
     const auto &cfg = m_impl->config;
     if (!is_loopback_host(cfg.host))
@@ -698,16 +698,37 @@ void ApiServer::start()
         int yes = 1;
         setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
     });
-    if (!m_impl->server.bind_to_port(cfg.host, cfg.port))
-        throw std::runtime_error("Failed to bind " + cfg.host + ":" + std::to_string(cfg.port) +
-                                 " (is Data-Vantage already running? Try --port)");
     const std::string url = "http://" + (cfg.host.find(':') != std::string::npos ? "[" + cfg.host + "]" : cfg.host) +
                             ":" + std::to_string(cfg.port) + "/";
+    if (!m_impl->server.bind_to_port(cfg.host, cfg.port))
+    {
+        // Launched again from the app menu or AppImage while the first copy
+        // is still running: show the running one instead of failing silently.
+        if (cfg.open_browser && data_vantage_running(cfg.host, cfg.port))
+        {
+            std::cout << "Data-Vantage is already running on " << url << "; opening it." << std::endl;
+            if (!open_with_default_app(url))
+                std::cerr << "Could not open a browser; open " << url << " yourself." << std::endl;
+            return false;
+        }
+        throw std::runtime_error("Failed to bind " + cfg.host + ":" + std::to_string(cfg.port) +
+                                 " (is Data-Vantage already running? Try --port)");
+    }
     std::cout << "Data-Vantage listening on " << url << std::endl;
     if (cfg.open_browser && !open_with_default_app(url))
         std::cerr << "Could not open a browser; open " << url << " yourself." << std::endl;
     if (!m_impl->server.listen_after_bind())
         throw std::runtime_error("Server stopped unexpectedly on " + url);
+    return true;
+}
+
+bool data_vantage_running(const std::string &host, int port)
+{
+    httplib::Client client(host, port);
+    client.set_connection_timeout(1);
+    client.set_read_timeout(2);
+    const auto res = client.Get("/api/health");
+    return res && res->status == 200 && res->body.find("\"Data-Vantage\"") != std::string::npos;
 }
 
 void ApiServer::stop()

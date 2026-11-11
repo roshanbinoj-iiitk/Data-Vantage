@@ -58,7 +58,7 @@ chmod +x Data-Vantage-*-x86_64.AppImage
 ./Data-Vantage-*-x86_64.AppImage
 ```
 
-It starts the server and opens the web UI in your browser. Press Ctrl+C in the terminal to stop it. If you started it by double-clicking, the server keeps running in the background until you log out or end it with `pkill -f data-vantage`.
+It starts the server and opens the web UI in your browser. Press Ctrl+C in the terminal to stop it. If you started it by double-clicking, the server keeps running in the background until you log out or end it with `pkill -x data-vantage`; starting it again just opens the running copy in your browser.
 
 **Debian / Ubuntu (.deb):**
 

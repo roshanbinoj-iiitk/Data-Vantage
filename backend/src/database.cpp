@@ -352,15 +352,44 @@ Database::Database(const std::string &db_path) : m_impl(std::make_unique<Impl>()
 
     // Trigram full-text index for substring search. Optional: falls back to
     // LIKE when this SQLite lacks FTS5 or the trigram tokenizer.
+    // contentless_delete needs SQLite 3.43+. The table may also exist already,
+    // made by a newer SQLite than this one (the same database opened by
+    // another build), so check that it can actually be used, not just created.
+    exec(db, "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
     try
     {
         exec(db, "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5("
                  "name, content='', contentless_delete=1, tokenize='trigram')");
+        Stmt probe(db, "SELECT rowid FROM files_fts WHERE files_fts MATCH 'abc' LIMIT 0");
+        probe.step();
         m_impl->fts = true;
     }
     catch (const DbError &)
     {
         m_impl->fts = false;
+    }
+
+    if (!m_impl->fts)
+    {
+        // Files added or removed now won't reach the index, so a later run
+        // with a capable SQLite must rebuild it before trusting it.
+        exec(db, "INSERT OR REPLACE INTO meta (key, value) VALUES ('fts_stale', '1')");
+    }
+    else
+    {
+        bool stale = false;
+        {
+            Stmt s(db, "SELECT value FROM meta WHERE key = 'fts_stale'");
+            stale = s.step();
+        }
+        if (stale)
+        {
+            Transaction tx(db);
+            exec(db, "INSERT INTO files_fts (files_fts) VALUES ('delete-all');"
+                     "INSERT INTO files_fts (rowid, name) SELECT uid, name FROM files WHERE id != 0;"
+                     "DELETE FROM meta WHERE key = 'fts_stale';");
+            tx.commit();
+        }
     }
 
     exec(db, "PRAGMA user_version = " + std::to_string(SCHEMA_VERSION));

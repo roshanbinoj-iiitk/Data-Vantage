@@ -106,9 +106,10 @@ int main(int argc, char *argv[])
     {
         auto server = std::make_unique<ApiServer>(config);
         g_server = server.get();
-        server->start();
+        const bool served = server->start();
         g_server = nullptr;
-        std::cout << "Shutting down Data-Vantage..." << std::endl;
+        if (served)
+            std::cout << "Shutting down Data-Vantage..." << std::endl;
         server.reset(); // cancels running scans and waits for them
     }
     catch (const std::exception &e)
